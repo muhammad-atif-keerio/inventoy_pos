@@ -18,6 +18,7 @@ async function createTestData() {
                 email: "test@example.com",
                 address: "Test Address",
                 city: "Test City",
+                updatedAt: new Date(),
             },
         });
         console.log("✅ Test vendor created:", vendor);
@@ -28,6 +29,7 @@ async function createTestData() {
             data: {
                 name: "Test Thread Type",
                 description: "Test Thread Type Description",
+                updatedAt: new Date(),
             },
         });
         console.log("✅ Test thread type created:", threadType);
@@ -55,6 +57,7 @@ async function createTestData() {
             data: {
                 name: "Test Fabric Type",
                 description: "Test Fabric Type Description",
+                updatedAt: new Date(),
             },
         });
         console.log("✅ Test fabric type created:", fabricType);
@@ -92,6 +95,7 @@ async function createTestData() {
                 costPerUnit: 10,
                 salePrice: 15,
                 location: "Warehouse A",
+                updatedAt: new Date(),
             },
         });
         console.log("✅ Test thread inventory created:", threadInventory);
@@ -110,6 +114,7 @@ async function createTestData() {
                 costPerUnit: 20,
                 salePrice: 30,
                 location: "Warehouse B",
+                updatedAt: new Date(),
             },
         });
         console.log("✅ Test fabric inventory created:", fabricInventory);
@@ -123,6 +128,7 @@ async function createTestData() {
                 email: "customer@example.com",
                 address: "Customer Address",
                 city: "Customer City",
+                updatedAt: new Date(),
             },
         });
         console.log("✅ Test customer created:", customer);
@@ -216,6 +222,8 @@ async function testSalesProcess(testData) {
                         {
                             productType: "THREAD",
                             productId: testData.threadPurchase.id,
+                            threadPurchaseId: testData.threadPurchase.id,
+                            fabricProductionId: null,
                             quantitySold: 10,
                             unitPrice: 15,
                             subtotal: 150,
@@ -223,6 +231,8 @@ async function testSalesProcess(testData) {
                         {
                             productType: "FABRIC",
                             productId: testData.fabricProduction.id,
+                            threadPurchaseId: null,
+                            fabricProductionId: testData.fabricProduction.id,
                             quantitySold: 5,
                             unitPrice: 30,
                             subtotal: 150,

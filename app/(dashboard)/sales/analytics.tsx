@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 
 import { PaymentMode, PaymentStatus, ProductType } from "@prisma/client";
+import { format } from "date-fns";
 import {
     BarChart as BarChartIcon,
     DollarSign,
+    Download,
     Loader2,
     TrendingUp,
 } from "lucide-react";
@@ -45,7 +47,10 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 // Type for analytics data from API
 interface AnalyticsData {
     totalRevenue: number;
+    totalOrders: number;
     averageOrderSize: number;
+    revenueTrend: number;
+    orderTrend: number;
     salesByTimeframe: {
         label: string;
         value: number;
@@ -97,6 +102,55 @@ const PAYMENT_STATUS_COLORS = {
     [PaymentStatus.PARTIAL]: COLORS.info,
     [PaymentStatus.PENDING]: COLORS.warning,
     [PaymentStatus.CANCELLED]: COLORS.danger,
+};
+
+// Utility for CSV export
+const exportToCSV = (data: Record<string, unknown>[], filename: string) => {
+    if (!data || data.length === 0) {
+        toast.error("No data to export");
+        return;
+    }
+
+    const headers = Object.keys(data[0]);
+
+    const csvContent = [
+        headers.join(","),
+        ...data.map((row) =>
+            headers
+                .map((header) => {
+                    let value = row[header];
+                    if (value instanceof Date) {
+                        value = format(value, "yyyy-MM-dd");
+                    }
+                    if (typeof value === "object" && value !== null) {
+                        value = JSON.stringify(value);
+                    }
+                    if (
+                        typeof value === "string" &&
+                        (value.includes(",") || value.includes('"'))
+                    ) {
+                        value = `"${value.replace(/"/g, '""')}"`;
+                    }
+                    return value;
+                })
+                .join(","),
+        ),
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute(
+        "download",
+        `${filename}-${format(new Date(), "yyyy-MM-dd")}.csv`,
+    );
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    toast.success(`Successfully exported ${data.length} records`);
 };
 
 export function SalesAnalytics() {
@@ -151,7 +205,10 @@ export function SalesAnalytics() {
                 // Set default empty data structure
                 setAnalyticsData({
                     totalRevenue: 0,
+                    totalOrders: 0,
                     averageOrderSize: 0,
+                    revenueTrend: 0,
+                    orderTrend: 0,
                     salesByTimeframe: [],
                     paymentDistribution: [],
                     productDistribution: [],
@@ -165,6 +222,63 @@ export function SalesAnalytics() {
 
         fetchAnalytics();
     }, [timeRange]);
+
+    // Export functions
+    const handleExportSales = () => {
+        if (
+            !analyticsData ||
+            !analyticsData.salesByTimeframe ||
+            analyticsData.salesByTimeframe.length === 0
+        ) {
+            toast.error("No sales data to export");
+            return;
+        }
+        exportToCSV(analyticsData.salesByTimeframe, "sales-data");
+    };
+
+    const handleExportAll = () => {
+        if (!analyticsData) {
+            toast.error("No data to export");
+            return;
+        }
+
+        const exportData = [
+            {
+                reportType: "Sales Summary",
+                timeRange,
+                totalRevenue: analyticsData.totalRevenue,
+                totalOrders: analyticsData.totalOrders || 0,
+                averageOrderSize: analyticsData.averageOrderSize,
+                revenueTrend: analyticsData.revenueTrend || 0,
+                orderTrend: analyticsData.orderTrend || 0,
+                exportDate: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
+            },
+            ...analyticsData.salesByTimeframe.map((item) => ({
+                period: item.label,
+                revenue: item.value,
+                reportType: "Sales By Period",
+            })),
+            ...analyticsData.paymentDistribution.map((item) => ({
+                paymentMode: item.mode,
+                count: item.count,
+                reportType: "Payment Distribution",
+            })),
+            ...analyticsData.productDistribution.map((item) => ({
+                productType: item.type,
+                percentage: item.value,
+                reportType: "Product Distribution",
+            })),
+            ...analyticsData.topCustomers.map((item) => ({
+                customerName: item.name,
+                orderCount: item.count,
+                totalSpent: item.total,
+                averageOrderValue: item.total / item.count,
+                reportType: "Top Customers",
+            })),
+        ];
+
+        exportToCSV(exportData, "sales-analytics-full");
+    };
 
     if (loading) {
         return (
@@ -243,12 +357,16 @@ export function SalesAnalytics() {
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="outline" size="sm">
-                            Export
+                            <Download className="mr-2 h-4 w-4" /> Export
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                        <DropdownMenuItem>Export as PDF</DropdownMenuItem>
-                        <DropdownMenuItem>Export as CSV</DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleExportSales}>
+                            Export Sales Data
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={handleExportAll}>
+                            Export All Analytics
+                        </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>
@@ -295,14 +413,24 @@ export function SalesAnalytics() {
                 <Card className="border shadow transition-shadow hover:shadow-md">
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">
-                            Trend
+                            Revenue Trend
                         </CardTitle>
-                        <TrendingUp className="h-4 w-4 text-green-500" />
+                        <TrendingUp
+                            className={`h-4 w-4 ${(analyticsData.revenueTrend ?? 0) >= 0 ? "text-green-500" : "text-red-500"}`}
+                        />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">+12.5%</div>
-                        <p className="text-xs text-green-600">
-                            Increase from previous period
+                        <div className="text-2xl font-bold">
+                            {(analyticsData.revenueTrend ?? 0) >= 0 ? "+" : ""}
+                            {(analyticsData.revenueTrend ?? 0).toFixed(1)}%
+                        </div>
+                        <p
+                            className={`text-xs ${(analyticsData.revenueTrend ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}
+                        >
+                            {(analyticsData.revenueTrend ?? 0) >= 0
+                                ? "Increase"
+                                : "Decrease"}{" "}
+                            from previous period
                         </p>
                     </CardContent>
                 </Card>
@@ -332,13 +460,18 @@ export function SalesAnalytics() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">
-                            {analyticsData.paymentDistribution.reduce(
-                                (acc, item) => acc + item.count,
-                                0,
-                            )}
+                            {analyticsData.totalOrders ??
+                                analyticsData.paymentDistribution.reduce(
+                                    (acc, item) => acc + item.count,
+                                    0,
+                                )}
                         </div>
-                        <p className="text-muted-foreground text-xs">
-                            Total completed orders
+                        <p
+                            className={`text-xs ${(analyticsData.orderTrend ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}
+                        >
+                            {(analyticsData.orderTrend ?? 0) >= 0 ? "+" : ""}
+                            {(analyticsData.orderTrend ?? 0).toFixed(1)}% from
+                            previous period
                         </p>
                     </CardContent>
                 </Card>
@@ -579,86 +712,182 @@ export function SalesAnalytics() {
                         </div>
                     </CardContent>
                 </Card>
-
-                {/* Top Customers */}
-                {analyticsData.topCustomers &&
-                    analyticsData.topCustomers.length > 0 && (
-                        <Card className="border shadow transition-shadow hover:shadow-md lg:col-span-2">
-                            <CardHeader>
-                                <CardTitle className="text-base">
-                                    Top Customers
-                                </CardTitle>
-                                <CardDescription className="text-xs">
-                                    Customers with highest purchase volume
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="h-[250px]">
-                                    <ResponsiveContainer
-                                        width="100%"
-                                        height="100%"
-                                    >
-                                        <BarChart
-                                            data={analyticsData.topCustomers.slice(
-                                                0,
-                                                5,
-                                            )} // Show top 5
-                                            layout="vertical"
-                                            margin={{
-                                                top: 5,
-                                                right: 30,
-                                                left: 120,
-                                                bottom: 5,
-                                            }}
-                                        >
-                                            <CartesianGrid
-                                                strokeDasharray="3 3"
-                                                className="stroke-muted"
-                                            />
-                                            <XAxis
-                                                type="number"
-                                                tickFormatter={(value) =>
-                                                    formatCurrency(value)
-                                                }
-                                                tick={{ fontSize: 12 }}
-                                                tickLine={{
-                                                    stroke: "transparent",
-                                                }}
-                                                axisLine={{ stroke: "#e5e7eb" }}
-                                            />
-                                            <YAxis
-                                                type="category"
-                                                dataKey="name"
-                                                tick={{ fontSize: 12 }}
-                                                width={120}
-                                                tickLine={{
-                                                    stroke: "transparent",
-                                                }}
-                                                axisLine={{ stroke: "#e5e7eb" }}
-                                            />
-                                            <Tooltip
-                                                formatter={(value) => [
-                                                    formatCurrency(
-                                                        Number(value),
-                                                    ),
-                                                    "Total Spent",
-                                                ]}
-                                                labelFormatter={(label) =>
-                                                    `Customer: ${label}`
-                                                }
-                                            />
-                                            <Bar
-                                                dataKey="total"
-                                                fill={COLORS.primary}
-                                                radius={[0, 4, 4, 0]}
-                                            />
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    )}
             </div>
+
+            {/* Product Distribution */}
+            {analyticsData.productDistribution &&
+                analyticsData.productDistribution.length > 0 && (
+                    <Card className="border shadow transition-shadow hover:shadow-md">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-base">
+                                Product Type Distribution
+                            </CardTitle>
+                            <CardDescription className="text-xs">
+                                Sales breakdown by product type (Thread vs
+                                Fabric)
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="h-[200px] pt-4">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart
+                                        data={analyticsData.productDistribution}
+                                        margin={{
+                                            top: 5,
+                                            right: 30,
+                                            left: 30,
+                                            bottom: 5,
+                                        }}
+                                        layout="vertical"
+                                    >
+                                        <CartesianGrid
+                                            strokeDasharray="3 3"
+                                            className="stroke-muted"
+                                        />
+                                        <XAxis
+                                            type="number"
+                                            tickFormatter={(value) =>
+                                                `${value}%`
+                                            }
+                                            domain={[0, 100]}
+                                        />
+                                        <YAxis
+                                            dataKey="type"
+                                            type="category"
+                                            tick={{ fontSize: 12 }}
+                                            tickLine={{ stroke: "transparent" }}
+                                        />
+                                        <Tooltip
+                                            formatter={(value) => [
+                                                `${value}%`,
+                                                "Percentage",
+                                            ]}
+                                        />
+                                        <Bar
+                                            dataKey="value"
+                                            name="Sales Percentage"
+                                            radius={[0, 4, 4, 0]}
+                                        >
+                                            {analyticsData.productDistribution.map(
+                                                (entry, index) => (
+                                                    <Cell
+                                                        key={`cell-${index}`}
+                                                        fill={
+                                                            entry.type ===
+                                                            ProductType.THREAD
+                                                                ? COLORS.info
+                                                                : COLORS.secondary
+                                                        }
+                                                    />
+                                                ),
+                                            )}
+                                        </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+
+                            {/* Legend */}
+                            <div className="mt-4 flex items-center justify-center gap-6">
+                                {analyticsData.productDistribution.map(
+                                    (entry, index) => (
+                                        <div
+                                            key={index}
+                                            className="flex items-center"
+                                        >
+                                            <div
+                                                className="mr-2 h-3 w-3 rounded-full"
+                                                style={{
+                                                    backgroundColor:
+                                                        entry.type ===
+                                                        ProductType.THREAD
+                                                            ? COLORS.info
+                                                            : COLORS.secondary,
+                                                }}
+                                            />
+                                            <span className="text-sm">
+                                                {entry.type}: {entry.value}%
+                                            </span>
+                                        </div>
+                                    ),
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
+            {/* Top Customers */}
+            {analyticsData.topCustomers &&
+                analyticsData.topCustomers.length > 0 && (
+                    <Card className="border shadow transition-shadow hover:shadow-md">
+                        <CardHeader>
+                            <CardTitle className="text-base">
+                                Top Customers
+                            </CardTitle>
+                            <CardDescription className="text-xs">
+                                Customers with highest purchase volume
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="h-[250px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart
+                                        data={analyticsData.topCustomers.slice(
+                                            0,
+                                            5,
+                                        )} // Show top 5
+                                        layout="vertical"
+                                        margin={{
+                                            top: 5,
+                                            right: 30,
+                                            left: 120,
+                                            bottom: 5,
+                                        }}
+                                    >
+                                        <CartesianGrid
+                                            strokeDasharray="3 3"
+                                            className="stroke-muted"
+                                        />
+                                        <XAxis
+                                            type="number"
+                                            tickFormatter={(value) =>
+                                                formatCurrency(value)
+                                            }
+                                            tick={{ fontSize: 12 }}
+                                            tickLine={{
+                                                stroke: "transparent",
+                                            }}
+                                            axisLine={{ stroke: "#e5e7eb" }}
+                                        />
+                                        <YAxis
+                                            type="category"
+                                            dataKey="name"
+                                            tick={{ fontSize: 12 }}
+                                            width={120}
+                                            tickLine={{
+                                                stroke: "transparent",
+                                            }}
+                                            axisLine={{ stroke: "#e5e7eb" }}
+                                        />
+                                        <Tooltip
+                                            formatter={(value) => [
+                                                formatCurrency(Number(value)),
+                                                "Total Spent",
+                                            ]}
+                                            labelFormatter={(label) =>
+                                                `Customer: ${label}`
+                                            }
+                                        />
+                                        <Bar
+                                            dataKey="total"
+                                            fill={COLORS.primary}
+                                            radius={[0, 4, 4, 0]}
+                                        />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
         </div>
     );
 }

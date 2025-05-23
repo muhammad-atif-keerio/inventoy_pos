@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { db } from "../../../../lib/db";
+import { LedgerApiResponse } from "../../ledger-types";
 
 // Default khatas to return if database connection fails
 const defaultKhatas = [
@@ -17,7 +18,7 @@ const defaultKhatas = [
  * GET /api/ledger/khata
  * Get all khatas (account books)
  */
-export async function GET() {
+export async function GET(): Promise<NextResponse<LedgerApiResponse>> {
     try {
         console.log("Fetching khatas from database...");
 
@@ -67,26 +68,42 @@ export async function GET() {
                     "Still no khatas found after attempting to create one, using default khata",
                 );
                 return NextResponse.json({
-                    khatas: defaultKhatas,
+                    success: true,
+                    data: {
+                        khatas: defaultKhatas,
+                    },
+                    statusCode: 200,
                 });
             }
 
             // Format and return khatas
             return NextResponse.json({
-                khatas: khataEntries.map((entry) => ({
-                    id: entry.id,
-                    name: entry.description, // Use description field for name
-                    description: entry.notes || null,
-                    createdAt: entry.createdAt.toISOString(),
-                    updatedAt: entry.updatedAt.toISOString(),
-                })),
+                success: true,
+                data: {
+                    khatas: khataEntries.map((entry) => ({
+                        id: entry.id,
+                        name: entry.description, // Use description field for name
+                        description: entry.notes || null,
+                        createdAt: entry.createdAt.toISOString(),
+                        updatedAt: entry.updatedAt.toISOString(),
+                    })),
+                },
+                statusCode: 200,
             });
         } catch (queryError) {
             console.error("Error querying khatas:", queryError);
             return NextResponse.json({
-                khatas: defaultKhatas,
+                success: false,
+                data: {
+                    khatas: defaultKhatas,
+                },
                 error: "Failed to query khatas, using default",
+                message:
+                    queryError instanceof Error
+                        ? queryError.message
+                        : String(queryError),
                 databaseError: true,
+                statusCode: 500,
             });
         }
     } catch (error) {
@@ -94,9 +111,14 @@ export async function GET() {
 
         // Return a default khata to prevent UI issues
         return NextResponse.json({
-            khatas: defaultKhatas,
+            success: false,
+            data: {
+                khatas: defaultKhatas,
+            },
             error: "Failed to fetch khatas, using default",
+            message: error instanceof Error ? error.message : String(error),
             databaseError: true,
+            statusCode: 500,
         });
     }
 }
@@ -105,14 +127,20 @@ export async function GET() {
  * POST /api/ledger/khata
  * Create a new khata (account book)
  */
-export async function POST(request: NextRequest) {
+export async function POST(
+    request: NextRequest,
+): Promise<NextResponse<LedgerApiResponse>> {
     try {
         const body = await request.json();
 
         // Validate required fields
         if (!body.name || body.name.trim() === "") {
             return NextResponse.json(
-                { error: "Khata name is required" },
+                {
+                    success: false,
+                    error: "Khata name is required",
+                    statusCode: 400,
+                },
                 { status: 400 },
             );
         }
@@ -134,13 +162,18 @@ export async function POST(request: NextRequest) {
 
             return NextResponse.json(
                 {
-                    khata: {
-                        id: newKhata.id,
-                        name: newKhata.description,
-                        description: newKhata.notes,
-                        createdAt: newKhata.createdAt.toISOString(),
-                        updatedAt: newKhata.updatedAt.toISOString(),
+                    success: true,
+                    data: {
+                        khata: {
+                            id: newKhata.id,
+                            name: newKhata.description,
+                            description: newKhata.notes,
+                            createdAt: newKhata.createdAt.toISOString(),
+                            updatedAt: newKhata.updatedAt.toISOString(),
+                        },
                     },
+                    message: "Khata created successfully",
+                    statusCode: 201,
                 },
                 { status: 201 },
             );
@@ -148,22 +181,26 @@ export async function POST(request: NextRequest) {
             console.error("Error creating khata:", createError);
             return NextResponse.json(
                 {
+                    success: false,
                     error: "Failed to create khata",
-                    details:
+                    message:
                         createError instanceof Error
                             ? createError.message
                             : String(createError),
                     databaseError: true,
+                    statusCode: 500,
                 },
                 { status: 500 },
             );
         }
     } catch (error) {
-        console.error("Error processing request:", error);
+        console.error("Error in khata POST request:", error);
         return NextResponse.json(
             {
+                success: false,
                 error: "Failed to process request",
-                details: error instanceof Error ? error.message : String(error),
+                message: error instanceof Error ? error.message : String(error),
+                statusCode: 500,
             },
             { status: 500 },
         );

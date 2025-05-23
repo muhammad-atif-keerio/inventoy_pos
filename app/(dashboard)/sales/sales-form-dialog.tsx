@@ -97,6 +97,8 @@ const formSchema = z
         productType: z.nativeEnum(ProductType),
         productId: z.string().optional(),
         sourceProductId: z.string().optional(),
+        threadPurchaseId: z.string().optional(),
+        fabricProductionId: z.string().optional(),
         inventoryItemId: z.string().optional(),
         quantitySold: z
             .string()
@@ -418,6 +420,18 @@ const isQuantityTooLarge = (
     return quantity > maxQuantity;
 };
 
+// Helper function to ensure consistent number formatting
+const formatNumber = (value: number | string): number => {
+    // Handle string conversion or use the number directly
+    const numValue = typeof value === "string" ? parseFloat(value) : value;
+
+    // Return 0 for invalid numbers
+    if (isNaN(numValue)) return 0;
+
+    // Format with 2 decimal places
+    return Number(numValue.toFixed(2));
+};
+
 export function SalesFormDialog({
     triggerButton,
     onSaleCreated,
@@ -454,6 +468,8 @@ export function SalesFormDialog({
             productType: "THREAD" as const,
             productId: "",
             sourceProductId: "",
+            threadPurchaseId: "",
+            fabricProductionId: "",
             inventoryItemId: "",
             quantitySold: "",
             salePrice: "",
@@ -529,68 +545,85 @@ export function SalesFormDialog({
         if (cartItems.length === 0) {
             setCalculatedTotal(0);
             form.setValue("totalSale", 0);
-            return;
+            form.setValue("paymentAmount", "0");
+            return 0;
         }
 
-        // First calculate the sum of all item subtotals with proper precision handling
-        let itemsTotal = cartItems.reduce((sum, item) => {
-            // Parse the subtotal to ensure we're dealing with clean numbers
-            const itemSubtotal = parseFloat(
-                parseFloat(item.subtotal.toString()).toFixed(2),
+        try {
+            // First calculate the sum of all item subtotals with proper precision handling
+            const itemsTotal = cartItems.reduce((sum, item) => {
+                // Ensure we're dealing with a number
+                const subtotalValue =
+                    typeof item.subtotal === "number"
+                        ? item.subtotal
+                        : parseFloat(String(item.subtotal));
+
+                // Parse the subtotal to ensure clean numbers
+                const itemSubtotal = Number(subtotalValue.toFixed(2));
+                return sum + (isNaN(itemSubtotal) ? 0 : itemSubtotal);
+            }, 0);
+
+            // Get order-level adjustments
+            const orderDiscount = safeParseFloat(
+                form.getValues("discount") || "0",
             );
-            return sum + (isNaN(itemSubtotal) ? 0 : itemSubtotal);
-        }, 0);
+            const orderTax = safeParseFloat(form.getValues("tax") || "0");
 
-        // Round the items total to 2 decimal places
-        itemsTotal = parseFloat(itemsTotal.toFixed(2));
+            // Apply order-level discount first (never go below zero)
+            let total = Math.max(0, itemsTotal - orderDiscount);
 
-        // Get order-level adjustments
-        const orderDiscount = safeParseFloat(form.getValues("discount") || "0");
-        const orderTax = safeParseFloat(form.getValues("tax") || "0");
-
-        // Apply order-level discount first (never go below zero)
-        let total = Math.max(0, itemsTotal - orderDiscount);
-
-        // Then apply order-level tax
-        if (orderTax > 0) {
-            total += orderTax;
-        }
-
-        // Fix JavaScript floating point issues for money values
-        // Add a small epsilon and round to 2 decimal places
-        total = parseFloat(
-            (Math.round((total + Number.EPSILON) * 100) / 100).toFixed(2),
-        );
-
-        // IMPORTANT: If we have items but total is zero or negative, set a minimum value
-        // This fixes the "total must be greater than zero" issue
-        if (cartItems.length > 0 && total <= 0) {
-            total = 0.01; // Minimum value to avoid validation errors
-        }
-
-        // Update the total in both local state and form state
-        setCalculatedTotal(total);
-        form.setValue("totalSale", total);
-
-        // Update payment amount based on payment status
-        const paymentStatus = form.getValues("paymentStatus");
-        const currentPaymentAmount = safeParseFloat(
-            form.getValues("paymentAmount") || "0",
-        );
-
-        if (paymentStatus === "PAID") {
-            // For PAID status, always match the total exactly
-            form.setValue("paymentAmount", total.toFixed(2));
-        } else if (paymentStatus === "PARTIAL") {
-            // For partial payment, ensure it doesn't exceed total
-            if (currentPaymentAmount > total) {
-                form.setValue("paymentAmount", total.toFixed(2));
+            // Then apply order-level tax
+            if (orderTax > 0) {
+                total += orderTax;
             }
-        } else if (paymentStatus === "PENDING") {
-            // For pending, ensure payment amount is 0
-            if (currentPaymentAmount > 0) {
+
+            // Fix JavaScript floating point issues for money values
+            total = Number(
+                (Math.round((total + Number.EPSILON) * 100) / 100).toFixed(2),
+            );
+
+            // IMPORTANT: If we have items but total is zero or negative, set a minimum value
+            if (cartItems.length > 0 && total <= 0) {
+                total = 0.01; // Minimum value to avoid validation errors
+            }
+
+            // Update the total in both local state and form state
+            setCalculatedTotal(total);
+            form.setValue("totalSale", total);
+
+            // Update payment amount based on payment status
+            const paymentStatus = form.getValues("paymentStatus");
+            const currentPaymentAmount = safeParseFloat(
+                form.getValues("paymentAmount") || "0",
+            );
+
+            if (paymentStatus === "PAID") {
+                // For PAID status, always match the total exactly
+                form.setValue("paymentAmount", total.toFixed(2));
+            } else if (paymentStatus === "PARTIAL") {
+                // For partial payment:
+                // - If current amount exceeds the new total, cap it at total
+                // - If no amount is set, default to 50% of total
+                // - Otherwise, keep the current amount
+                if (currentPaymentAmount > total) {
+                    form.setValue("paymentAmount", total.toFixed(2));
+                } else if (currentPaymentAmount === 0) {
+                    const halfTotal = Math.round(total * 0.5 * 100) / 100;
+                    form.setValue("paymentAmount", halfTotal.toFixed(2));
+                }
+            } else {
+                // For other statuses (PENDING, CANCELLED), ensure payment amount is 0
                 form.setValue("paymentAmount", "0");
             }
+
+            return total;
+        } catch (error) {
+            console.error("Error calculating order totals:", error);
+            // Provide fallback in case of calculation error
+            const safeTotal = 0.01;
+            setCalculatedTotal(safeTotal);
+            form.setValue("totalSale", safeTotal);
+            return safeTotal;
         }
     }, [cartItems, form]);
 
@@ -1086,58 +1119,94 @@ export function SalesFormDialog({
         }
     }, [selectedProduct, form]);
 
-    // Validate payment fields when payment status changes
-    useEffect(() => {
-        const paymentStatus = form.watch("paymentStatus");
-        const paymentMode = form.watch("paymentMode");
-        const paymentAmount = form.watch("paymentAmount");
-
-        // When status changes to PAID, update amount to full total
-        if (paymentStatus === "PAID") {
-            // Only set if not already set by user
-            if (!paymentAmount || parseFloat(paymentAmount) === 0) {
-                form.setValue("paymentAmount", calculatedTotal.toString());
-            }
-
-            // Ensure payment mode is set
-            if (!paymentMode) {
-                form.setValue("paymentMode", "CASH");
-            }
-        }
-        // For PARTIAL, offer a default 50% if not set
-        else if (paymentStatus === "PARTIAL") {
-            if (!paymentAmount || parseFloat(paymentAmount) === 0) {
-                const halfTotal = Math.round(calculatedTotal * 0.5 * 100) / 100;
-                form.setValue("paymentAmount", halfTotal.toString());
-            }
-
-            // Ensure payment mode is set
-            if (!paymentMode) {
-                form.setValue("paymentMode", "CASH");
-            }
-        }
-        // For PENDING, reset payment amount
-        else if (paymentStatus === "PENDING") {
-            form.setValue("paymentAmount", "0");
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [form.watch("paymentStatus"), calculatedTotal, form]);
-
     // Update the payment amount for validation when total changes
     useEffect(() => {
-        const paymentStatus = form.watch("paymentStatus");
-        const paymentAmount = safeParseFloat(form.watch("paymentAmount"));
+        const paymentStatusValue = form.watch("paymentStatus");
+        const calculatedTotalValue = calculatedTotal;
 
-        // Only auto-adjust if payment status is PAID
-        if (paymentStatus === "PAID" && paymentAmount !== calculatedTotal) {
-            form.setValue("paymentAmount", calculatedTotal.toString());
-        }
-
-        // Validate that payment amount doesn't exceed total
-        if (paymentAmount > calculatedTotal) {
-            form.setValue("paymentAmount", calculatedTotal.toString());
+        // Only auto-adjust if payment status is PAID or PARTIAL
+        if (paymentStatusValue === "PAID") {
+            // Set payment amount to match total
+            form.setValue("paymentAmount", calculatedTotalValue.toFixed(2));
+        } else if (paymentStatusValue === "PARTIAL") {
+            // For PARTIAL status, ensure payment amount doesn't exceed total
+            // but don't auto-adjust it unless it exceeds the total
+            const currentPaymentAmount = safeParseFloat(
+                form.watch("paymentAmount") || "0",
+            );
+            if (currentPaymentAmount > calculatedTotalValue) {
+                form.setValue("paymentAmount", calculatedTotalValue.toFixed(2));
+            } else if (currentPaymentAmount <= 0) {
+                // Set a default half payment if the amount is zero
+                const halfTotal =
+                    Math.round(calculatedTotalValue * 0.5 * 100) / 100;
+                form.setValue("paymentAmount", halfTotal.toFixed(2));
+            }
+        } else if (
+            paymentStatusValue === "PENDING" ||
+            paymentStatusValue === "CANCELLED"
+        ) {
+            // Reset payment amount for PENDING or CANCELLED status
+            form.setValue("paymentAmount", "0");
         }
     }, [calculatedTotal, form]);
+
+    // Validate payment fields when payment status changes
+    const paymentStatusWatcher = form.watch("paymentStatus");
+
+    useEffect(() => {
+        const paymentMode = form.watch("paymentMode");
+
+        // Reset fields when payment status changes
+        if (
+            paymentStatusWatcher === "PENDING" ||
+            paymentStatusWatcher === "CANCELLED"
+        ) {
+            form.setValue("paymentAmount", "0");
+            form.clearErrors("paymentAmount");
+        } else if (paymentStatusWatcher === "PAID") {
+            // For PAID status, set payment amount to the full total and ensure payment mode is set
+            form.setValue("paymentAmount", calculatedTotal.toFixed(2));
+            if (!paymentMode) {
+                form.setValue("paymentMode", "CASH");
+            }
+        } else if (paymentStatusWatcher === "PARTIAL") {
+            // For PARTIAL, make sure payment amount and mode are set
+            const currentPaymentAmount = safeParseFloat(
+                form.watch("paymentAmount"),
+            );
+            if (currentPaymentAmount <= 0) {
+                const halfTotal = Math.round(calculatedTotal * 0.5 * 100) / 100;
+                form.setValue("paymentAmount", halfTotal.toFixed(2));
+            }
+            if (!paymentMode) {
+                form.setValue("paymentMode", "CASH");
+            }
+        }
+
+        // Enable/disable payment-related fields based on status
+        if (
+            paymentStatusWatcher === "PAID" ||
+            paymentStatusWatcher === "PARTIAL"
+        ) {
+            // These statuses require a payment mode and amount
+            setTimeout(() => {
+                const paymentModeField = document.querySelector(
+                    '[name="paymentMode"]',
+                );
+                const paymentAmountField = document.querySelector(
+                    '[name="paymentAmount"]',
+                );
+
+                if (paymentModeField) {
+                    (paymentModeField as HTMLInputElement).disabled = false;
+                }
+                if (paymentAmountField) {
+                    (paymentAmountField as HTMLInputElement).disabled = false;
+                }
+            }, 0);
+        }
+    }, [paymentStatusWatcher, calculatedTotal, form]);
 
     // Wait for component to be ready before allowing submission
     const [isReady, setIsReady] = useState(false);
@@ -1179,53 +1248,25 @@ export function SalesFormDialog({
             }
 
             // Force recalculation of total
-            calculateOrderTotals();
-
-            // Get the latest calculated total
-            let finalTotal = calculatedTotal;
+            const finalTotal = calculateOrderTotals();
 
             // Extra safeguard for zero total with items in cart
             if (finalTotal <= 0 && cartItems.length > 0) {
-                // Check if any item has a valid subtotal
-                const hasValidItems = cartItems.some(
-                    (item) => parseFloat(item.subtotal.toString()) > 0,
-                );
-
-                if (hasValidItems) {
-                    // Recalculate total manually from item subtotals
-                    const manualTotal = cartItems.reduce((sum, item) => {
-                        return (
-                            sum +
-                            parseFloat(
-                                parseFloat(item.subtotal.toString()).toFixed(2),
-                            )
-                        );
-                    }, 0);
-
-                    // Ensure we have a positive value
-                    finalTotal = Math.max(0.01, manualTotal);
-                    setCalculatedTotal(finalTotal);
-                    form.setValue("totalSale", finalTotal);
-                } else {
-                    toast.error("Total sale amount must be greater than zero");
-                    setLoading(false);
-                    return;
-                }
+                toast.error("Total sale amount must be greater than zero");
+                setLoading(false);
+                return;
             }
 
-            // Format the final total safely for consistency
-            finalTotal = parseFloat(finalTotal.toFixed(2));
+            // Validate payment information based on selected payment status
+            const paymentStatus = data.paymentStatus;
+            let paymentAmount = 0;
 
-            // Validate payment information
-            if (
-                data.paymentStatus === "PAID" ||
-                data.paymentStatus === "PARTIAL"
-            ) {
-                const paymentAmount = safeParseFloat(data.paymentAmount || "0");
+            if (paymentStatus === "PAID" || paymentStatus === "PARTIAL") {
+                paymentAmount = safeParseFloat(data.paymentAmount || "0");
 
                 if (!paymentAmount || paymentAmount <= 0) {
                     toast.error(
-                        `Payment amount is required for ${data.paymentStatus.toLowerCase()} status`,
+                        `Payment amount is required for ${paymentStatus.toLowerCase()} status`,
                     );
                     form.setError("paymentAmount", {
                         type: "manual",
@@ -1236,10 +1277,25 @@ export function SalesFormDialog({
                 }
 
                 // For PAID status, ensure the amount matches the total
-                if (data.paymentStatus === "PAID") {
+                if (paymentStatus === "PAID") {
                     // Allow a small threshold for floating point imprecision
                     if (Math.abs(paymentAmount - finalTotal) > 0.01) {
+                        // Auto-correct to the final total
+                        paymentAmount = finalTotal;
                         form.setValue("paymentAmount", finalTotal.toFixed(2));
+                    }
+                } else if (paymentStatus === "PARTIAL") {
+                    // For PARTIAL payment, validate that it's actually partial
+                    if (Math.abs(paymentAmount - finalTotal) <= 0.01) {
+                        // If the payment is essentially the full amount, suggest changing to PAID
+                        if (
+                            confirm(
+                                "The payment amount equals the total sale. Would you like to change the payment status to PAID?",
+                            )
+                        ) {
+                            form.setValue("paymentStatus", "PAID");
+                            data.paymentStatus = "PAID";
+                        }
                     }
                 }
 
@@ -1249,6 +1305,18 @@ export function SalesFormDialog({
                         "Payment amount cannot exceed total sale amount",
                     );
                     form.setValue("paymentAmount", finalTotal.toFixed(2));
+                    paymentAmount = finalTotal;
+                }
+
+                // Ensure payment mode is selected for PAID or PARTIAL
+                if (!data.paymentMode) {
+                    toast.error(
+                        `Payment method is required for ${paymentStatus.toLowerCase()} status`,
+                    );
+                    form.setError("paymentMode", {
+                        type: "manual",
+                        message: "Please select a payment method",
+                    });
                     setLoading(false);
                     return;
                 }
@@ -1277,6 +1345,11 @@ export function SalesFormDialog({
                     setLoading(false);
                     return;
                 }
+
+                // Ensure cheque status is set for CHEQUE payments
+                if (!data.chequeStatus) {
+                    form.setValue("chequeStatus", "PENDING");
+                }
             }
 
             // Format data for submission
@@ -1289,7 +1362,10 @@ export function SalesFormDialog({
                 deliveryDate: data.deliveryDate,
                 deliveryAddress: data.deliveryAddress,
                 remarks: data.remarks,
-                paymentMode: data.paymentMode,
+                paymentMode:
+                    paymentStatus === "PAID" || paymentStatus === "PARTIAL"
+                        ? data.paymentMode
+                        : undefined,
                 chequeStatus:
                     data.paymentMode === "CHEQUE"
                         ? data.chequeStatus
@@ -1304,44 +1380,79 @@ export function SalesFormDialog({
                 bank: data.paymentMode === "CHEQUE" ? data.bank : undefined,
                 branch: data.paymentMode === "CHEQUE" ? data.branch : undefined,
                 paymentAmount:
-                    (data.paymentStatus === "PAID" ||
-                        data.paymentStatus === "PARTIAL") &&
-                    data.paymentAmount
-                        ? parseFloat(parseFloat(data.paymentAmount).toFixed(2))
-                        : undefined,
-                discount: safeParseFloat(data.discount || "0"),
-                tax: safeParseFloat(data.tax || "0"),
-                totalSale: finalTotal,
-                items: cartItems.map((item) => ({
-                    productType: item.productType,
-                    productId: item.productId,
-                    threadPurchaseId:
-                        item.productType === ProductType.THREAD
-                            ? item.threadPurchaseId
-                            : null,
-                    fabricProductionId:
-                        item.productType === ProductType.FABRIC
-                            ? item.fabricProductionId
-                            : null,
-                    quantitySold: item.quantity,
-                    unitPrice: parseFloat(
-                        parseFloat(item.unitPrice.toString()).toFixed(2),
-                    ),
-                    discount: parseFloat(
-                        parseFloat(item.discount.toString()).toFixed(2),
-                    ),
-                    tax: parseFloat(parseFloat(item.tax.toString()).toFixed(2)),
-                    subtotal: parseFloat(
-                        parseFloat(item.subtotal.toString()).toFixed(2),
-                    ),
-                    inventoryItemId: item.inventoryItemId,
-                })),
+                    paymentAmount > 0 ? formatNumber(paymentAmount) : undefined,
+                discount: formatNumber(data.discount || "0"),
+                tax: formatNumber(data.tax || "0"),
+                totalSale: formatNumber(finalTotal),
+                items: cartItems.map((item) => {
+                    // Ensure all numeric values are properly formatted
+                    const productId = parseInt(String(item.productId));
+
+                    // Type for item data to match the SalesOrderItemData interface
+                    const itemData: {
+                        productType: ProductType;
+                        productId: number;
+                        threadPurchaseId?: number | null;
+                        fabricProductionId?: number | null;
+                        quantitySold: number;
+                        unitPrice: number;
+                        discount: number;
+                        tax: number;
+                        subtotal: number;
+                        inventoryItemId?: number;
+                    } = {
+                        productType: item.productType,
+                        productId: productId,
+                        quantitySold: item.quantity,
+                        unitPrice: formatNumber(item.unitPrice),
+                        discount: formatNumber(item.discount),
+                        tax: formatNumber(item.tax),
+                        subtotal: formatNumber(item.subtotal),
+                    };
+
+                    // Add inventory item ID if available
+                    if (item.inventoryItemId) {
+                        itemData.inventoryItemId = parseInt(
+                            String(item.inventoryItemId),
+                        );
+                    }
+
+                    // Add the correct type-specific ID based on product type
+                    if (
+                        item.productType === "THREAD" &&
+                        item.threadPurchaseId
+                    ) {
+                        itemData.threadPurchaseId = parseInt(
+                            String(item.threadPurchaseId),
+                        );
+                        itemData.fabricProductionId = null;
+                    } else if (
+                        item.productType === "FABRIC" &&
+                        item.fabricProductionId
+                    ) {
+                        itemData.fabricProductionId = parseInt(
+                            String(item.fabricProductionId),
+                        );
+                        itemData.threadPurchaseId = null;
+                    }
+
+                    return itemData;
+                }),
             };
 
-            // Log submission data
+            // Log submission data with more details for debugging
             console.log(
                 "Submitting sales data:",
-                JSON.stringify(submissionData, null, 2),
+                JSON.stringify(
+                    {
+                        ...submissionData,
+                        timestamp: new Date().toISOString(),
+                        itemsCount: submissionData.items.length,
+                        totalCalculated: calculatedTotal,
+                    },
+                    null,
+                    2,
+                ),
             );
 
             // Submit the data
@@ -1355,6 +1466,9 @@ export function SalesFormDialog({
 
             if (!response.ok) {
                 const responseText = await response.text();
+                console.error(
+                    `API response error (${response.status}): ${responseText}`,
+                );
 
                 try {
                     // Check if the response is HTML (indicating a server error page)
@@ -1364,6 +1478,10 @@ export function SalesFormDialog({
                     ) {
                         toast.error(
                             "Server error: The server returned an HTML error page instead of JSON",
+                            {
+                                description: `Status code: ${response.status}`,
+                                duration: 8000,
+                            },
                         );
                         console.error(
                             "Server returned HTML instead of JSON:",
@@ -1372,15 +1490,42 @@ export function SalesFormDialog({
                     } else {
                         // Try to parse as JSON
                         const errorData = JSON.parse(responseText);
-                        toast.error(
+
+                        // Display a more descriptive error message
+                        const errorMessage =
                             errorData.details ||
-                                errorData.error ||
-                                "Failed to create sale",
-                        );
+                            errorData.error ||
+                            "Failed to create sale";
+
+                        toast.error(errorMessage, {
+                            description: errorData.details
+                                ? "Please check the form details and try again."
+                                : `Server reported an error (${response.status}). Please try again later.`,
+                            duration: 8000,
+                        });
+
+                        console.error("Server error data:", errorData);
+
+                        // Fix the error field type to avoid using 'any'
+                        if (errorData.field) {
+                            // Use type assertion with a more specific type
+                            form.setError(errorData.field as keyof FormValues, {
+                                type: "manual",
+                                message: errorMessage,
+                            });
+                        }
                     }
                 } catch (parseError) {
+                    console.error(
+                        "Failed to parse error response:",
+                        parseError,
+                    );
                     toast.error(
-                        `Failed to create sale: ${responseText || "Server error"}`,
+                        `Failed to create sale: ${responseText.substring(0, 200) || "Server error"}`,
+                        {
+                            description: `Status: ${response.status}. Check console for details.`,
+                            duration: 8000,
+                        },
                     );
                 }
 
@@ -1416,24 +1561,74 @@ export function SalesFormDialog({
 
             // Success!
             if (responseData?.success) {
-                // Reset form
-                form.reset();
+                // Reset form and state completely
+                form.reset({
+                    orderNumber: "",
+                    customerName: "",
+                    customerId: "",
+                    productType: "THREAD" as const,
+                    productId: "",
+                    sourceProductId: "",
+                    threadPurchaseId: "",
+                    fabricProductionId: "",
+                    inventoryItemId: "",
+                    quantitySold: "",
+                    salePrice: "",
+                    itemDiscount: "",
+                    itemTax: "",
+                    discount: "",
+                    tax: "",
+                    totalSale: 0,
+                    orderDate: new Date(),
+                    deliveryDate: undefined,
+                    deliveryAddress: "",
+                    remarks: "",
+                    paymentMode: "CASH" as const,
+                    chequeNumber: "",
+                    bank: "",
+                    branch: "",
+                    paymentAmount: "0",
+                    paymentStatus: "PENDING" as const,
+                    updateInventory: true,
+                });
+
                 setSelectedProduct(null);
                 setCartItems([]);
                 setCalculatedTotal(0);
+                setCurrentItemSubtotal(0);
 
-                // Show success message
+                // Show success message with order number
                 toast.success(
                     `Sale Created: Order #${responseData.salesOrder.orderNumber}`,
+                    {
+                        description: "The sale has been successfully recorded",
+                        duration: 5000,
+                    },
                 );
+
+                // Close the dialog
                 setOpen(false);
 
-                // Call callback if provided
+                // Call callback if provided to refresh the sales list
                 if (onSaleCreated) {
                     onSaleCreated();
                 }
+
+                // Dispatch events to refresh sales data in other components
+                window.dispatchEvent(new CustomEvent("salesDataUpdated"));
+
+                // Give time for the server to process the data before redirecting or refreshing
+                setTimeout(() => {
+                    // If we're on the sales page, trigger a refresh
+                    if (window.location.pathname.includes("/sales")) {
+                        console.log("Triggering sales data refresh");
+                        window.dispatchEvent(new Event("refreshSalesData"));
+                    }
+                }, 500);
             } else {
-                throw new Error(responseData.error || "Unknown error occurred");
+                throw new Error(
+                    responseData?.error || "Unknown error occurred",
+                );
             }
         } catch (error) {
             console.error("Error creating sale:", error);
@@ -1525,6 +1720,12 @@ export function SalesFormDialog({
                     "sourceProductId",
                     product.threadPurchaseId.toString(),
                 );
+                // Also set the explicit threadPurchaseId field for the updated schema
+                form.setValue(
+                    "threadPurchaseId",
+                    product.threadPurchaseId.toString(),
+                );
+                form.setValue("fabricProductionId", ""); // Clear other field
             } else if (
                 product.type === "FABRIC" &&
                 product.fabricProductionId
@@ -1533,6 +1734,12 @@ export function SalesFormDialog({
                     "sourceProductId",
                     product.fabricProductionId.toString(),
                 );
+                // Also set the explicit fabricProductionId field for the updated schema
+                form.setValue(
+                    "fabricProductionId",
+                    product.fabricProductionId.toString(),
+                );
+                form.setValue("threadPurchaseId", ""); // Clear other field
             }
 
             // Update available quantity information and set default quantity
@@ -1568,6 +1775,8 @@ export function SalesFormDialog({
             setSelectedProduct(null);
             form.setValue("inventoryItemId", "");
             form.setValue("sourceProductId", "");
+            form.setValue("threadPurchaseId", "");
+            form.setValue("fabricProductionId", "");
         }
     };
 
@@ -1593,7 +1802,7 @@ export function SalesFormDialog({
         return () => subscription.unsubscribe();
     }, [form, selectedProduct]);
 
-    // Improve the addItemToCart function with better calculation precision and duplicate handling
+    // Improve the addItemToCart function with better product-specific ID handling
     const addItemToCart = () => {
         setAddingToCart(true);
         try {
@@ -1613,12 +1822,37 @@ export function SalesFormDialog({
                 return;
             }
 
-            // Check if this product is already in the cart
-            const existingProductIndex = cartItems.findIndex(
-                (item) =>
-                    item.productType === selectedProduct.type &&
-                    item.productId === selectedProduct.id,
-            );
+            // Check if this product is already in the cart - ensure exact matching by proper ID
+            const productType = selectedProduct.type as ProductType;
+            const existingProductIndex = cartItems.findIndex((item) => {
+                // Match by product type and proper ID based on type
+                if (item.productType !== productType) return false;
+
+                if (productType === "THREAD" && item.threadPurchaseId) {
+                    // For thread, match by threadPurchaseId
+                    const selectedThreadId =
+                        form.getValues("threadPurchaseId") ||
+                        selectedProduct.threadPurchaseId?.toString() ||
+                        selectedProduct.id.toString();
+                    return (
+                        item.threadPurchaseId.toString() === selectedThreadId
+                    );
+                } else if (
+                    productType === "FABRIC" &&
+                    item.fabricProductionId
+                ) {
+                    // For fabric, match by fabricProductionId
+                    const selectedFabricId =
+                        form.getValues("fabricProductionId") ||
+                        selectedProduct.fabricProductionId?.toString() ||
+                        selectedProduct.id.toString();
+                    return (
+                        item.fabricProductionId.toString() === selectedFabricId
+                    );
+                }
+                // Fall back to product ID
+                return item.productId === selectedProduct.id;
+            });
 
             if (existingProductIndex !== -1) {
                 // If product is already in cart, ask user if they want to update quantity instead
@@ -1658,7 +1892,7 @@ export function SalesFormDialog({
                     const baseAmount = newTotalQuantity * price;
                     const afterDiscount = Math.max(0, baseAmount - discount);
                     const subtotal = afterDiscount + tax;
-                    const finalSubtotal = parseFloat(
+                    const finalSubtotal = Number(
                         (
                             Math.round((subtotal + Number.EPSILON) * 100) / 100
                         ).toFixed(2),
@@ -1668,10 +1902,10 @@ export function SalesFormDialog({
                     updatedCartItems[existingProductIndex] = {
                         ...existingItem,
                         quantity: newTotalQuantity,
-                        unitPrice: parseFloat(price.toFixed(2)),
-                        discount: parseFloat(discount.toFixed(2)),
-                        tax: parseFloat(tax.toFixed(2)),
-                        subtotal: finalSubtotal,
+                        unitPrice: formatNumber(price),
+                        discount: formatNumber(discount),
+                        tax: formatNumber(tax),
+                        subtotal: formatNumber(finalSubtotal),
                     };
 
                     // Update cart and show success message
@@ -1688,6 +1922,8 @@ export function SalesFormDialog({
                     form.setValue("itemTax", "");
                     form.setValue("sourceProductId", "");
                     form.setValue("inventoryItemId", "");
+                    form.setValue("threadPurchaseId", "");
+                    form.setValue("fabricProductionId", "");
                     setSelectedProduct(null);
                     setCurrentItemSubtotal(0);
 
@@ -1742,7 +1978,6 @@ export function SalesFormDialog({
             }
 
             // Calculate final subtotal with precise math
-            // First calculate the base amount
             const baseAmount = quantity * price;
 
             // Validate discount doesn't exceed base amount
@@ -1762,11 +1997,39 @@ export function SalesFormDialog({
             const subtotal = afterDiscount + tax;
 
             // Round to 2 decimal places for consistency
-            const finalSubtotal = parseFloat(
+            const finalSubtotal = Number(
                 (Math.round((subtotal + Number.EPSILON) * 100) / 100).toFixed(
                     2,
                 ),
             );
+
+            // Get the specific IDs for the product type
+            let threadPurchaseId: number | undefined = undefined;
+            let fabricProductionId: number | undefined = undefined;
+
+            if (selectedProduct.type === "THREAD") {
+                // For THREAD products
+                const threadIdValue =
+                    form.getValues("threadPurchaseId") ||
+                    selectedProduct.threadPurchaseId?.toString() ||
+                    selectedProduct.id.toString();
+                threadPurchaseId = parseInt(threadIdValue);
+
+                console.log(
+                    `Adding THREAD item with threadPurchaseId: ${threadPurchaseId}`,
+                );
+            } else if (selectedProduct.type === "FABRIC") {
+                // For FABRIC products
+                const fabricIdValue =
+                    form.getValues("fabricProductionId") ||
+                    selectedProduct.fabricProductionId?.toString() ||
+                    selectedProduct.id.toString();
+                fabricProductionId = parseInt(fabricIdValue);
+
+                console.log(
+                    `Adding FABRIC item with fabricProductionId: ${fabricProductionId}`,
+                );
+            }
 
             // Create the cart item with properly calculated values
             const newItem: CartItem = {
@@ -1774,21 +2037,38 @@ export function SalesFormDialog({
                 productType: selectedProduct.type as ProductType,
                 name: selectedProduct.name,
                 quantity: quantity,
-                unitPrice: parseFloat(price.toFixed(2)),
-                discount: parseFloat(discount.toFixed(2)),
-                tax: parseFloat(tax.toFixed(2)),
-                subtotal: finalSubtotal,
+                unitPrice: formatNumber(price),
+                discount: formatNumber(discount),
+                tax: formatNumber(tax),
+                subtotal: formatNumber(finalSubtotal),
                 inventoryItemId: selectedProduct.inventoryItemId,
-                threadPurchaseId:
-                    selectedProduct.type === "THREAD"
-                        ? selectedProduct.threadPurchaseId
-                        : undefined,
-                fabricProductionId:
-                    selectedProduct.type === "FABRIC"
-                        ? selectedProduct.fabricProductionId
-                        : undefined,
+                threadPurchaseId: threadPurchaseId,
+                fabricProductionId: fabricProductionId,
                 availableQuantity: selectedProduct.available,
             };
+
+            // Set the correct type-specific ID based on product type
+            if (selectedProduct.type === "THREAD") {
+                const threadPurchaseId = parseInt(
+                    form.getValues("threadPurchaseId") ||
+                        selectedProduct.threadPurchaseId?.toString() ||
+                        selectedProduct.id.toString(),
+                );
+                newItem.threadPurchaseId = threadPurchaseId;
+                console.log(
+                    `Adding thread product with threadPurchaseId: ${threadPurchaseId}`,
+                );
+            } else if (selectedProduct.type === "FABRIC") {
+                const fabricProductionId = parseInt(
+                    form.getValues("fabricProductionId") ||
+                        selectedProduct.fabricProductionId?.toString() ||
+                        selectedProduct.id.toString(),
+                );
+                newItem.fabricProductionId = fabricProductionId;
+                console.log(
+                    `Adding fabric product with fabricProductionId: ${fabricProductionId}`,
+                );
+            }
 
             // Add to cart
             setCartItems((prevItems) => [...prevItems, newItem]);
@@ -1802,6 +2082,8 @@ export function SalesFormDialog({
             form.setValue("itemTax", "");
             form.setValue("sourceProductId", "");
             form.setValue("inventoryItemId", "");
+            form.setValue("threadPurchaseId", "");
+            form.setValue("fabricProductionId", "");
             setSelectedProduct(null);
             setCurrentItemSubtotal(0);
 
@@ -2087,6 +2369,28 @@ export function SalesFormDialog({
                                                                         Item)
                                                                     </span>
                                                                 )}
+                                                                {item.productType ===
+                                                                    "THREAD" &&
+                                                                    item.threadPurchaseId && (
+                                                                        <span className="text-muted-foreground ml-1 text-xs">
+                                                                            (ID:{" "}
+                                                                            {
+                                                                                item.threadPurchaseId
+                                                                            }
+                                                                            )
+                                                                        </span>
+                                                                    )}
+                                                                {item.productType ===
+                                                                    "FABRIC" &&
+                                                                    item.fabricProductionId && (
+                                                                        <span className="text-muted-foreground ml-1 text-xs">
+                                                                            (ID:{" "}
+                                                                            {
+                                                                                item.fabricProductionId
+                                                                            }
+                                                                            )
+                                                                        </span>
+                                                                    )}
                                                             </div>
                                                         </div>
                                                     </td>
@@ -3053,7 +3357,10 @@ export function SalesFormDialog({
                                                     disabled={
                                                         form.getValues(
                                                             "paymentStatus",
-                                                        ) === "PENDING"
+                                                        ) === "PENDING" ||
+                                                        form.getValues(
+                                                            "paymentStatus",
+                                                        ) === "CANCELLED"
                                                     }
                                                 >
                                                     <FormControl>
@@ -3096,7 +3403,10 @@ export function SalesFormDialog({
                                                     disabled={
                                                         form.getValues(
                                                             "paymentStatus",
-                                                        ) === "PENDING"
+                                                        ) === "PENDING" ||
+                                                        form.getValues(
+                                                            "paymentStatus",
+                                                        ) === "CANCELLED"
                                                     }
                                                 />
                                             </FormControl>
@@ -3231,7 +3541,20 @@ export function SalesFormDialog({
                             </Button>
                             <Button
                                 type="submit"
-                                disabled={loading || cartItems.length === 0}
+                                disabled={
+                                    loading ||
+                                    cartItems.length === 0 ||
+                                    !isReady
+                                }
+                                onClick={() => {
+                                    if (
+                                        !loading &&
+                                        cartItems.length > 0 &&
+                                        isReady
+                                    ) {
+                                        form.handleSubmit(onSubmit)();
+                                    }
+                                }}
                             >
                                 {loading ? (
                                     <>

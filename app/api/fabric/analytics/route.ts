@@ -105,8 +105,6 @@ export async function GET() {
             },
         });
 
-        
-
         // METRIC 7: Get payment status distribution for fabric sales
         const paymentStatusData = await db.salesOrder.groupBy({
             by: ["paymentStatus"],

@@ -54,6 +54,8 @@ import { InventoryItem } from "./interface";
 
 // app/inventory/columns.tsx
 
+// app/inventory/columns.tsx
+
 // Helper function to format currency
 export const formatCurrency = (amount: number): string => {
     return new Intl.NumberFormat("en-PK", {

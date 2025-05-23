@@ -254,6 +254,8 @@ model SalesOrderItem {
   salesOrderId     Int
   productType      ProductType
   productId        Int
+  threadPurchaseId Int?
+  fabricProductionId Int?
   quantitySold     Int
   unitPrice        Decimal          @db.Decimal(10, 2)
   discount         Decimal?         @db.Decimal(10, 2)
@@ -262,13 +264,15 @@ model SalesOrderItem {
   inventoryItemId  Int?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime
-  fabricProduction FabricProduction @relation(fields: [productId], references: [id], name: "FabricToSalesItem", map: "SalesOrderItem_fabricProductionId_fkey")
   salesOrder       SalesOrder       @relation(fields: [salesOrderId], references: [id], name: "SalesOrderToItem", onDelete: Cascade)
-  threadPurchase   ThreadPurchase   @relation(fields: [productId], references: [id], name: "ThreadToSalesItem", map: "SalesOrderItem_threadPurchaseId_fkey")
+  fabricProduction FabricProduction? @relation(fields: [fabricProductionId], references: [id], name: "FabricToSalesItem")
+  threadPurchase   ThreadPurchase?   @relation(fields: [threadPurchaseId], references: [id], name: "ThreadToSalesItem")
 
   @@index([productId])
   @@index([productType])
   @@index([salesOrderId])
+  @@index([threadPurchaseId])
+  @@index([fabricProductionId])
 }
 
 model ThreadPurchase {

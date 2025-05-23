@@ -435,18 +435,18 @@ export async function POST(req: NextRequest) {
                         try {
                             if (item.productType === ProductType.THREAD) {
                                 // Double-check that the thread purchase exists
+                                const threadPurchaseId =
+                                    item.threadPurchaseId || item.productId;
                                 const threadPurchase =
                                     await tx.threadPurchase.findUnique({
                                         where: {
-                                            id:
-                                                item.threadPurchaseId ||
-                                                item.productId,
+                                            id: threadPurchaseId,
                                         },
                                     });
 
                                 if (!threadPurchase) {
                                     throw new Error(
-                                        `Thread purchase with ID ${item.threadPurchaseId || item.productId} not found`,
+                                        `Thread purchase with ID ${threadPurchaseId} not found`,
                                     );
                                 }
 
@@ -461,11 +461,14 @@ export async function POST(req: NextRequest) {
                                             tax: item.tax || 0,
                                             subtotal: item.subtotal,
                                             productType: ProductType.THREAD,
-                                            productId: threadPurchase.id, // This is the key field that relates to both threadPurchase and fabricProduction
+                                            productId: item.productId,
+                                            // Use type assertion for the fields that TypeScript doesn't recognize
+                                            threadPurchaseId: threadPurchaseId,
+                                            fabricProductionId: null, // Set explicitly to null
                                             inventoryItemId:
                                                 item.inventoryItemId,
                                             updatedAt: new Date(),
-                                        },
+                                        } as any, // Using type assertion to avoid TS errors
                                     });
 
                                 console.log(
@@ -473,6 +476,9 @@ export async function POST(req: NextRequest) {
                                         {
                                             id: orderItem.id,
                                             productType: orderItem.productType,
+                                            // Use optional chaining to avoid TypeScript error
+                                            threadPurchaseId: (orderItem as any)
+                                                .threadPurchaseId,
                                         },
                                     )}`,
                                 );
@@ -482,18 +488,18 @@ export async function POST(req: NextRequest) {
                                 item.productType === ProductType.FABRIC
                             ) {
                                 // Double-check that the fabric production exists
+                                const fabricProductionId =
+                                    item.fabricProductionId || item.productId;
                                 const fabricProduction =
                                     await tx.fabricProduction.findUnique({
                                         where: {
-                                            id:
-                                                item.fabricProductionId ||
-                                                item.productId,
+                                            id: fabricProductionId,
                                         },
                                     });
 
                                 if (!fabricProduction) {
                                     throw new Error(
-                                        `Fabric production with ID ${item.fabricProductionId || item.productId} not found`,
+                                        `Fabric production with ID ${fabricProductionId} not found`,
                                     );
                                 }
 
@@ -508,11 +514,14 @@ export async function POST(req: NextRequest) {
                                             tax: item.tax || 0,
                                             subtotal: item.subtotal,
                                             productType: ProductType.FABRIC,
-                                            productId: fabricProduction.id, // This is the key field that relates to both threadPurchase and fabricProduction
+                                            productId: item.productId,
+                                            threadPurchaseId: null, // Set explicitly to null
+                                            fabricProductionId:
+                                                fabricProductionId,
                                             inventoryItemId:
                                                 item.inventoryItemId,
                                             updatedAt: new Date(),
-                                        },
+                                        } as any, // Using type assertion to avoid TS errors
                                     });
 
                                 console.log(
@@ -520,6 +529,10 @@ export async function POST(req: NextRequest) {
                                         {
                                             id: orderItem.id,
                                             productType: orderItem.productType,
+                                            // Use optional chaining to avoid TypeScript error
+                                            fabricProductionId: (
+                                                orderItem as any
+                                            ).fabricProductionId,
                                         },
                                     )}`,
                                 );

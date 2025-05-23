@@ -302,7 +302,12 @@ export async function POST(request: Request) {
                 } else {
                     // Ensure a valid vendor exists for auto-created thread purchases
                     let defaultVendor = await db.vendor.findFirst({
-                        where: { name: { contains: "System Vendor", mode: "insensitive" } },
+                        where: {
+                            name: {
+                                contains: "System Vendor",
+                                mode: "insensitive",
+                            },
+                        },
                     });
                     if (!defaultVendor) {
                         defaultVendor = await db.vendor.create({
@@ -408,11 +413,13 @@ export async function POST(request: Request) {
 
         // Before creating ThreadPurchase, validate vendorId
         if (body.vendorId) {
-            const vendor = await db.vendor.findUnique({ where: { id: body.vendorId } });
+            const vendor = await db.vendor.findUnique({
+                where: { id: body.vendorId },
+            });
             if (!vendor) {
                 return NextResponse.json(
                     { error: "Vendor does not exist" },
-                    { status: 400 }
+                    { status: 400 },
                 );
             }
         }

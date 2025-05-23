@@ -151,6 +151,38 @@ export function SalesDataTable<TData, TValue>({
         fetchSalesData();
     }, [fetchSalesData, refreshTrigger]);
 
+    // Add an event listener to refresh data when the salesDataUpdated event is fired
+    React.useEffect(() => {
+        const handleDataUpdate = () => {
+            console.log(
+                "Sales data updated event received, refreshing data...",
+            );
+            fetchSalesData();
+        };
+
+        // Listen for the custom salesDataUpdated event
+        window.addEventListener("salesDataUpdated", handleDataUpdate);
+
+        // Clean up event listener
+        return () => {
+            window.removeEventListener("salesDataUpdated", handleDataUpdate);
+        };
+    }, [fetchSalesData]);
+
+    // Add event listener for refreshSalesData event
+    React.useEffect(() => {
+        const handleRefresh = () => {
+            console.log("Refresh sales data event received");
+            fetchSalesData();
+        };
+
+        window.addEventListener("refreshSalesData", handleRefresh);
+
+        return () => {
+            window.removeEventListener("refreshSalesData", handleRefresh);
+        };
+    }, [fetchSalesData]);
+
     // Handle filter changes
     const handleFilterChange = (key: string, value: string) => {
         setFilters((prev) => ({

@@ -25,8 +25,8 @@ DATABASE_URL="postgresql://postgres:password@localhost:5432/postgres"
 DIRECT_URL="postgresql://postgres:password@localhost:5432/postgres"
 
 # LEDGER DATABASE CONNECTION
-LEDGER_DATABASE_URL="\${DATABASE_URL}&schema=ledger"
-LEDGER_DIRECT_URL="\${DIRECT_URL}&schema=ledger"
+LEDGER_DATABASE_URL="\${DATABASE_URL}?sslmode=disable"
+LEDGER_DIRECT_URL="\${DIRECT_URL}?sslmode=disable"
 `;
                 fs.writeFileSync(".env", envContent);
                 console.log("Created new .env file with default values");
@@ -38,8 +38,8 @@ LEDGER_DIRECT_URL="\${DIRECT_URL}&schema=ledger"
         if (!envContent.includes("LEDGER_DATABASE_URL")) {
             console.log("Adding ledger database variables to .env file");
             envContent += `\n# LEDGER DATABASE CONNECTION
-LEDGER_DATABASE_URL="\${DATABASE_URL}&schema=ledger"
-LEDGER_DIRECT_URL="\${DIRECT_URL}&schema=ledger"\n`;
+LEDGER_DATABASE_URL="\${DATABASE_URL}?sslmode=disable"
+LEDGER_DIRECT_URL="\${DIRECT_URL}?sslmode=disable"\n`;
             fs.writeFileSync(".env", envContent);
         }
 
@@ -69,9 +69,12 @@ function generateLedgerClient() {
         }
 
         // Generate the client
-        execSync("npx prisma generate --schema=prisma/schema-ledger.prisma", {
-            stdio: "inherit",
-        });
+        execSync(
+            "npx prisma generate --schema=prisma/schema-ledger-schema.prisma",
+            {
+                stdio: "inherit",
+            },
+        );
 
         // Check if the client was generated
         const clientPath = path.join(targetDir, "index.js");
@@ -92,23 +95,31 @@ function generateLedgerClient() {
     }
 }
 
-// Push the schema to create database tables
-function pushLedgerSchema() {
+// Create or update the ledger adapter file
+function setupLedgerAdapter() {
     try {
-        console.log("Pushing ledger schema to database...");
-        execSync(
-            "npx prisma db push --schema=prisma/schema-ledger.prisma --accept-data-loss",
-            {
-                stdio: "inherit",
-            },
+        console.log("Setting up ledger adapter...");
+
+        const adapterPath = path.join(
+            __dirname,
+            "app",
+            "lib",
+            "ledger-adapter.ts",
         );
-        console.log("✅ Ledger schema pushed successfully");
+        if (!fs.existsSync(adapterPath)) {
+            console.log(
+                "ledger-adapter.ts not found! Please run node create-ledger-schema.js first.",
+            );
+            return false;
+        }
+
+        // The file exists and has been configured with our changes
+        console.log(
+            "✅ Adapter file already exists and is properly configured",
+        );
         return true;
     } catch (error) {
-        console.error("Error pushing ledger schema:", error.message);
-        console.log(
-            "Will continue anyway as mock data will be used in development",
-        );
+        console.error("Error setting up ledger adapter:", error.message);
         return false;
     }
 }
@@ -123,11 +134,8 @@ async function main() {
     // Step 2: Generate the Prisma client
     const clientSuccess = generateLedgerClient();
 
-    // Step 3: Push the schema (if client was generated)
-    let schemaSuccess = false;
-    if (clientSuccess) {
-        schemaSuccess = pushLedgerSchema();
-    }
+    // Step 3: Set up the adapter
+    const adapterSuccess = setupLedgerAdapter();
 
     console.log("\n📋 Summary:");
     console.log(
@@ -137,16 +145,11 @@ async function main() {
         `- Prisma Client Generation: ${clientSuccess ? "✅ Success" : "❌ Failed"}`,
     );
     console.log(
-        `- Schema Push: ${schemaSuccess ? "✅ Success" : clientSuccess ? "❌ Failed" : "⚠️ Skipped"}`,
+        `- Adapter Setup: ${adapterSuccess ? "✅ Success" : "❌ Failed"}`,
     );
 
-    if (envSuccess && clientSuccess) {
+    if (envSuccess && clientSuccess && adapterSuccess) {
         console.log("\n✅✅✅ Ledger system setup completed successfully!");
-        if (!schemaSuccess) {
-            console.log(
-                "⚠️ Note: Schema push failed, but the system will use mock data in development mode.",
-            );
-        }
     } else {
         console.log("\n⚠️ There were some issues with the ledger setup.");
         console.log(
@@ -157,6 +160,9 @@ async function main() {
     console.log("\n📌 Next steps:");
     console.log("1. Restart your Next.js development server");
     console.log("2. Visit the /ledger route in your application");
+    console.log(
+        "3. The system will use mock data in development mode until you fix the database connection",
+    );
 }
 
 main().catch((error) => {

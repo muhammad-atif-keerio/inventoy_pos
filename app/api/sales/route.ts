@@ -39,12 +39,23 @@ export async function GET(req: NextRequest) {
         const offset = searchParams.get("offset")
             ? parseInt(searchParams.get("offset")!)
             : 0;
+        const customerNameSearch = searchParams.get("customerName");
 
         // Build the query filters
         const whereClause: SalesOrderWhereInput = {};
 
         if (customerId) {
             whereClause.customerId = customerId;
+        }
+
+        // Customer name search - on the customer relation
+        if (customerNameSearch) {
+            whereClause.customer = {
+                name: {
+                    contains: customerNameSearch,
+                    mode: "insensitive" as Prisma.QueryMode,
+                },
+            };
         }
 
         if (status) {
@@ -139,31 +150,83 @@ export async function GET(req: NextRequest) {
         });
 
         // Format the response
-        const formattedOrders = salesOrders.map((order) => ({
-            ...order,
-            totalSale: Number(order.totalSale),
-            discount: order.discount ? Number(order.discount) : null,
-            tax: order.tax ? Number(order.tax) : null,
-            items: order.items.map((item) => ({
-                ...item,
-                unitPrice: Number(item.unitPrice),
-                discount: item.discount ? Number(item.discount) : null,
-                tax: item.tax ? Number(item.tax) : null,
-                subtotal: Number(item.subtotal),
-            })),
-            payments: order.payments.map((payment) => ({
-                ...payment,
-                amount: Number(payment.amount),
-                chequeTransaction: payment.chequeTransaction
-                    ? {
-                          ...payment.chequeTransaction,
-                          chequeAmount: Number(
-                              payment.chequeTransaction.chequeAmount,
-                          ),
-                      }
-                    : null,
-            })),
-        }));
+        const formattedOrders = salesOrders.map((order) => {
+            // Get first item for orders with just one product
+            const firstItem = order.items?.length === 1 ? order.items[0] : null;
+
+            // Product name for single-product orders
+            let productName = "";
+            if (firstItem) {
+                if (
+                    firstItem.productType === "THREAD" &&
+                    firstItem.threadPurchase
+                ) {
+                    productName = `${firstItem.threadPurchase.threadType} - ${
+                        firstItem.threadPurchase.colorStatus === "COLORED" &&
+                        firstItem.threadPurchase.color
+                            ? firstItem.threadPurchase.color
+                            : "Raw"
+                    }`;
+                } else if (
+                    firstItem.productType === "FABRIC" &&
+                    firstItem.fabricProduction
+                ) {
+                    productName = `${firstItem.fabricProduction.fabricType}${
+                        firstItem.fabricProduction.dimensions
+                            ? ` - ${firstItem.fabricProduction.dimensions}`
+                            : ""
+                    }`;
+                }
+            }
+
+            return {
+                ...order,
+                // Add a customerName property for consistent display
+                customerName: order.customer?.name || "Unknown Customer",
+                customerPhone: order.customer?.contact,
+                customerEmail: order.customer?.email,
+                // Use productName from first item for single-item orders
+                productName: order.items.length === 1 ? productName : undefined,
+                // Extract single item details for legacy support
+                productType:
+                    firstItem?.productType || order.items[0]?.productType,
+                productId: firstItem?.productId || order.items[0]?.productId,
+                quantitySold: firstItem
+                    ? firstItem.quantitySold
+                    : order.items.reduce(
+                          (sum, item) => sum + item.quantitySold,
+                          0,
+                      ),
+                unitPrice: firstItem
+                    ? Number(firstItem.unitPrice)
+                    : order.items.length > 0
+                      ? Number(order.items[0].unitPrice)
+                      : 0,
+                // Financial calculations
+                totalSale: Number(order.totalSale),
+                discount: order.discount ? Number(order.discount) : null,
+                tax: order.tax ? Number(order.tax) : null,
+                items: order.items.map((item) => ({
+                    ...item,
+                    unitPrice: Number(item.unitPrice),
+                    discount: item.discount ? Number(item.discount) : null,
+                    tax: item.tax ? Number(item.tax) : null,
+                    subtotal: Number(item.subtotal),
+                })),
+                payments: order.payments.map((payment) => ({
+                    ...payment,
+                    amount: Number(payment.amount),
+                    chequeTransaction: payment.chequeTransaction
+                        ? {
+                              ...payment.chequeTransaction,
+                              chequeAmount: Number(
+                                  payment.chequeTransaction.chequeAmount,
+                              ),
+                          }
+                        : null,
+                })),
+            };
+        });
 
         // Return the response with proper structure
         return NextResponse.json({
@@ -250,20 +313,23 @@ export async function POST(req: NextRequest) {
         if (!response.ok) {
             return NextResponse.json(
                 {
-                    error: result.error || "Failed to create sales order",
-                    details: result.details,
+                    success: false,
+                    error: result.error || "Failed to create sale",
                 },
                 { status: response.status },
             );
         }
 
-        return NextResponse.json(result);
+        return NextResponse.json({ success: true, data: result });
     } catch (error) {
-        console.error("Error creating sales order:", error);
+        console.error("Error creating sale:", error);
         return NextResponse.json(
             {
-                error: "Failed to create sales order",
-                details: error instanceof Error ? error.message : String(error),
+                success: false,
+                error:
+                    error instanceof Error
+                        ? error.message
+                        : "Failed to create sale",
             },
             { status: 500 },
         );

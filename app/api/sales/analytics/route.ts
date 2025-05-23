@@ -22,19 +22,29 @@ export async function GET(request: NextRequest) {
         // Calculate date range based on the selected time range
         const endDate = new Date();
         let startDate = new Date();
+        let prevPeriodStartDate = new Date();
+        let prevPeriodEndDate = new Date();
 
         switch (timeRange) {
             case "7days":
                 startDate = subDays(endDate, 7);
+                prevPeriodStartDate = subDays(startDate, 7);
+                prevPeriodEndDate = subDays(startDate, 1);
                 break;
             case "30days":
                 startDate = subDays(endDate, 30);
+                prevPeriodStartDate = subDays(startDate, 30);
+                prevPeriodEndDate = subDays(startDate, 1);
                 break;
             case "1year":
                 startDate = subYears(endDate, 1);
+                prevPeriodStartDate = subYears(startDate, 1);
+                prevPeriodEndDate = subDays(startDate, 1);
                 break;
             default:
                 startDate = subDays(endDate, 30);
+                prevPeriodStartDate = subDays(startDate, 30);
+                prevPeriodEndDate = subDays(startDate, 1);
         }
 
         // Fetch sales data from the database within the date range
@@ -83,11 +93,53 @@ export async function GET(request: NextRequest) {
             },
         });
 
+        // Also get previous period orders for trend calculation
+        const prevPeriodSalesOrders = await db.salesOrder.findMany({
+            where: {
+                orderDate: {
+                    gte: prevPeriodStartDate,
+                    lte: prevPeriodEndDate,
+                },
+            },
+            include: {
+                customer: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
+                },
+            },
+        });
+
         // Calculate total revenue
         const totalRevenue = salesOrders.reduce(
             (sum, sale) => sum + Number(sale.totalSale),
             0,
         );
+
+        // Calculate previous period revenue
+        const prevPeriodRevenue = prevPeriodSalesOrders.reduce(
+            (sum, sale) => sum + Number(sale.totalSale),
+            0,
+        );
+
+        // Calculate revenue trend percentage
+        let revenueTrend = 0;
+        if (prevPeriodRevenue > 0) {
+            revenueTrend =
+                ((totalRevenue - prevPeriodRevenue) / prevPeriodRevenue) * 100;
+        }
+
+        // Calculate order count trend
+        const totalOrders = salesOrders.length;
+        const prevPeriodTotalOrders = prevPeriodSalesOrders.length;
+        let orderTrend = 0;
+        if (prevPeriodTotalOrders > 0) {
+            orderTrend =
+                ((totalOrders - prevPeriodTotalOrders) /
+                    prevPeriodTotalOrders) *
+                100;
+        }
 
         // Calculate average order size
         const averageOrderSize =
@@ -264,12 +316,15 @@ export async function GET(request: NextRequest) {
             success: true,
             data: {
                 totalRevenue,
+                totalOrders,
                 averageOrderSize,
                 salesByTimeframe,
                 paymentDistribution,
                 productDistribution,
                 paymentStatusDistribution,
                 topCustomers,
+                revenueTrend,
+                orderTrend,
             },
         });
     } catch (error) {

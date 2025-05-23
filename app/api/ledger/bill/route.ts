@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 // Import db from the correct location
 import { db } from "../../../../lib/db";
+import { LedgerApiResponse, LedgerValidator } from "../../ledger-types";
 
 // Check if we're using real client
 const isUsingRealLedgerClient = !!process.env.LEDGER_DATABASE_URL;
@@ -124,15 +125,21 @@ export async function GET(request: NextRequest) {
                 updatedAt: bill.updatedAt.toISOString(),
             }));
 
-            return NextResponse.json({
-                bills: formattedBills,
-                pagination: {
-                    total: totalCount,
+            const response: LedgerApiResponse = {
+                success: true,
+                data: {
+                    bills: formattedBills,
+                },
+                meta: {
                     page,
                     pageSize,
+                    total: totalCount,
                     totalPages: Math.ceil(totalCount / pageSize),
                 },
-            });
+                statusCode: 200,
+            };
+
+            return NextResponse.json(response);
         } else {
             // Return mock data if not using real client
             const mockBills = [
@@ -190,25 +197,33 @@ export async function GET(request: NextRequest) {
                 },
             ];
 
-            return NextResponse.json({
-                bills: mockBills,
-                pagination: {
-                    total: mockBills.length,
+            const response: LedgerApiResponse = {
+                success: true,
+                data: {
+                    bills: mockBills,
+                },
+                meta: {
                     page: 1,
                     pageSize: 10,
+                    total: mockBills.length,
                     totalPages: 1,
                 },
-            });
+                statusCode: 200,
+            };
+
+            return NextResponse.json(response);
         }
     } catch (error) {
         console.error("Error fetching bills:", error);
-        return NextResponse.json(
-            {
-                error: "Failed to fetch bills",
-                details: error instanceof Error ? error.message : String(error),
-            },
-            { status: 500 },
-        );
+
+        const response: LedgerApiResponse = {
+            success: false,
+            error: "Failed to fetch bills",
+            message: error instanceof Error ? error.message : String(error),
+            statusCode: 500,
+        };
+
+        return NextResponse.json(response, { status: 500 });
     }
 }
 
@@ -220,37 +235,26 @@ export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
 
-        // Validate required fields
-        if (!body.khataId) {
-            return NextResponse.json(
-                { error: "Khata ID is required" },
-                { status: 400 },
-            );
-        }
+        // Use LedgerValidator to validate the bill data
+        const validation = LedgerValidator.validateBill({
+            billNumber: body.billNumber || "",
+            khataId: body.khataId ? parseInt(body.khataId) : undefined,
+            billDate: body.billDate ? new Date(body.billDate) : undefined,
+            dueDate: body.dueDate ? new Date(body.dueDate) : undefined,
+            amount: body.amount ? parseFloat(body.amount) : undefined,
+            billType: body.billType,
+            status: body.status || "PENDING",
+            paidAmount: body.paidAmount ? parseFloat(body.paidAmount) : 0,
+        });
 
-        if (!body.billType) {
-            return NextResponse.json(
-                { error: "Bill type is required" },
-                { status: 400 },
-            );
-        }
-
-        if (
-            !body.amount ||
-            isNaN(parseFloat(body.amount)) ||
-            parseFloat(body.amount) <= 0
-        ) {
-            return NextResponse.json(
-                { error: "Valid amount is required" },
-                { status: 400 },
-            );
-        }
-
-        if (!body.billDate) {
-            return NextResponse.json(
-                { error: "Bill date is required" },
-                { status: 400 },
-            );
+        if (!validation.isValid) {
+            const response: LedgerApiResponse = {
+                success: false,
+                error: "Invalid bill data",
+                message: validation.errors.join(", "),
+                statusCode: 400,
+            };
+            return NextResponse.json(response, { status: 400 });
         }
 
         if (isUsingRealLedgerClient) {
@@ -275,6 +279,9 @@ export async function POST(request: NextRequest) {
                 // Create the bill directly in the main database as a LedgerEntry
                 const newBill = await db.ledgerEntry.create({
                     data: {
+                        // Add khata reference
+                        reference: `${billNumber}${body.khataId ? ` khata:${body.khataId}` : ""}`,
+                        notes: `${body.description || ""}${body.description ? "\n" : ""}khata:${body.khataId}${body.partyId ? `\nparty:${body.partyId}` : ""}`,
                         entryType: "BILL",
                         entryDate: new Date(body.billDate),
                         dueDate: body.dueDate
@@ -285,8 +292,6 @@ export async function POST(request: NextRequest) {
                         amount: parseFloat(body.amount),
                         remainingAmount: parseFloat(body.amount), // Initially, the full amount is remaining
                         status: "PENDING",
-                        reference: `BILL-${billNumber} khata:${body.khataId}`,
-                        notes: `khata:${body.khataId}\nparty:${body.partyId || "none"}\nauto-sync:true`,
                         updatedAt: new Date(),
                         vendorId:
                             body.billType === "PURCHASE" ? body.partyId : null,
@@ -295,8 +300,9 @@ export async function POST(request: NextRequest) {
                     },
                 });
 
-                return NextResponse.json(
-                    {
+                const response: LedgerApiResponse = {
+                    success: true,
+                    data: {
                         bill: {
                             id: newBill.id,
                             billNumber,
@@ -317,25 +323,29 @@ export async function POST(request: NextRequest) {
                             updatedAt: newBill.updatedAt.toISOString(),
                         },
                     },
-                    { status: 201 },
-                );
+                    message: "Bill created successfully",
+                    statusCode: 201,
+                };
+
+                return NextResponse.json(response, { status: 201 });
             } catch (error) {
                 console.error("Error creating bill entry:", error);
-                return NextResponse.json(
-                    {
-                        error: "Failed to create bill entry",
-                        details:
-                            error instanceof Error
-                                ? error.message
-                                : String(error),
-                    },
-                    { status: 500 },
-                );
+
+                const response: LedgerApiResponse = {
+                    success: false,
+                    error: "Failed to create bill entry",
+                    message:
+                        error instanceof Error ? error.message : String(error),
+                    statusCode: 500,
+                };
+
+                return NextResponse.json(response, { status: 500 });
             }
         } else {
             // Return mock data if not using real client
-            return NextResponse.json(
-                {
+            const response: LedgerApiResponse = {
+                success: true,
+                data: {
                     bill: {
                         id: Math.floor(Math.random() * 1000) + 3,
                         billNumber: `BILL-${Math.floor(Math.random() * 9000) + 1000}`,
@@ -356,17 +366,22 @@ export async function POST(request: NextRequest) {
                         updatedAt: new Date().toISOString(),
                     },
                 },
-                { status: 201 },
-            );
+                message: "Mock bill created successfully",
+                statusCode: 201,
+            };
+
+            return NextResponse.json(response, { status: 201 });
         }
     } catch (error) {
         console.error("Error creating bill:", error);
-        return NextResponse.json(
-            {
-                error: "Failed to create bill",
-                details: error instanceof Error ? error.message : String(error),
-            },
-            { status: 500 },
-        );
+
+        const response: LedgerApiResponse = {
+            success: false,
+            error: "Failed to create bill",
+            message: error instanceof Error ? error.message : String(error),
+            statusCode: 500,
+        };
+
+        return NextResponse.json(response, { status: 500 });
     }
 }

@@ -255,19 +255,26 @@ export async function GET(request: NextRequest) {
             `[Ledger API ${requestId}] Request completed in ${requestDuration.toFixed(2)}ms. Returned ${formattedEntries.length} entries.`,
         );
 
+        // Return the formatted response
         return NextResponse.json(
             {
-                entries: formattedEntries,
-                pagination: {
-                    total: totalEntries,
-                    page,
-                    limit,
-                    pages: Math.ceil(totalEntries / limit),
+                success: true,
+                data: {
+                    entries: formattedEntries,
+                    summary,
                 },
-                summary,
-                timestamp: new Date().toISOString(), // Add timestamp for tracking data freshness
+                meta: {
+                    page,
+                    pageSize: limit,
+                    total: totalEntries,
+                    totalPages: Math.ceil(totalEntries / limit),
+                },
+                statusCode: 200,
             },
-            { headers },
+            {
+                headers,
+                status: 200,
+            },
         );
     } catch (error) {
         console.error("Error fetching ledger entries:", error);

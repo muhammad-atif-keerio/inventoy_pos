@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Plus } from "lucide-react";
 
@@ -27,6 +27,28 @@ export default function SalesPage() {
         setRefreshTrigger((prev) => prev + 1);
         setIsFormOpen(false);
     };
+
+    // Add event listener to refresh data when sales are updated
+    useEffect(() => {
+        const handleSalesDataUpdated = () => {
+            console.log("Sales data updated event received in page component");
+            setRefreshTrigger((prev) => prev + 1);
+        };
+
+        window.addEventListener("salesDataUpdated", handleSalesDataUpdated);
+        window.addEventListener("refreshSalesData", handleSalesDataUpdated);
+
+        return () => {
+            window.removeEventListener(
+                "salesDataUpdated",
+                handleSalesDataUpdated,
+            );
+            window.removeEventListener(
+                "refreshSalesData",
+                handleSalesDataUpdated,
+            );
+        };
+    }, []);
 
     return (
         <>

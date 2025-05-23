@@ -1,0 +1,234 @@
+// This is a schema file for the ledger system that uses prefixed table names
+// This avoids conflicts with existing tables
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/@prisma/ledger-client"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("LEDGER_DATABASE_URL")
+  directUrl = env("LEDGER_DIRECT_URL")
+}
+
+// Use a prefix for all table names to avoid conflicts
+model LedgerKhata {
+  id           Int               @id @default(autoincrement())
+  name         String
+  description  String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  accounts     LedgerBankAccount[]
+  bills        LedgerBill[]
+  parties      LedgerParty[]
+  transactions LedgerTransaction[]
+
+  @@map("ledger_khata")
+}
+
+model LedgerBill {
+  id           Int               @id @default(autoincrement())
+  billNumber   String            @unique
+  khataId      Int
+  partyId      Int?
+  billDate     DateTime
+  dueDate      DateTime?
+  amount       Decimal           @db.Decimal(10, 2)
+  description  String?
+  billType     LedgerBillType
+  status       LedgerBillStatus  @default(PENDING)
+  paidAmount   Decimal           @default(0) @db.Decimal(10, 2)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  khata        LedgerKhata       @relation(fields: [khataId], references: [id])
+  party        LedgerParty?      @relation(fields: [partyId], references: [id])
+  cheques      LedgerCheque[]
+  transactions LedgerTransaction[]
+
+  @@index([khataId])
+  @@index([partyId])
+  @@index([billDate])
+  @@index([status])
+  @@map("ledger_bill")
+}
+
+model LedgerParty {
+  id           Int               @id @default(autoincrement())
+  name         String
+  type         LedgerPartyType
+  khataId      Int
+  contact      String?
+  phoneNumber  String?
+  email        String?
+  address      String?
+  city         String?
+  description  String?
+  customerId   Int?
+  vendorId     Int?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  bills        LedgerBill[]
+  khata        LedgerKhata       @relation(fields: [khataId], references: [id])
+  transactions LedgerTransaction[]
+
+  @@index([khataId])
+  @@index([type])
+  @@index([customerId])
+  @@index([vendorId])
+  @@map("ledger_party")
+}
+
+model LedgerBankAccount {
+  id            Int              @id @default(autoincrement())
+  accountName   String
+  accountNumber String
+  bankName      String
+  branchName    String?
+  khataId       Int
+  balance       Decimal          @default(0) @db.Decimal(10, 2)
+  description   String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  khata         LedgerKhata      @relation(fields: [khataId], references: [id])
+  cheques       LedgerCheque[]
+  transactions  LedgerTransaction[]
+
+  @@index([khataId])
+  @@map("ledger_bank_account")
+}
+
+model LedgerTransaction {
+  id              Int                  @id @default(autoincrement())
+  khataId         Int
+  transactionDate DateTime
+  amount          Decimal              @db.Decimal(10, 2)
+  description     String
+  transactionType LedgerTransactionType
+  partyId         Int?
+  billId          Int?
+  bankAccountId   Int?
+  chequeId        Int?
+  inventoryId     Int?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  bankAccount     LedgerBankAccount?   @relation(fields: [bankAccountId], references: [id])
+  bill            LedgerBill?          @relation(fields: [billId], references: [id])
+  cheque          LedgerCheque?        @relation(fields: [chequeId], references: [id])
+  inventory       LedgerInventory?     @relation(fields: [inventoryId], references: [id])
+  khata           LedgerKhata          @relation(fields: [khataId], references: [id])
+  party           LedgerParty?         @relation(fields: [partyId], references: [id])
+
+  @@index([khataId])
+  @@index([transactionDate])
+  @@index([transactionType])
+  @@index([partyId])
+  @@index([billId])
+  @@index([bankAccountId])
+  @@index([chequeId])
+  @@index([inventoryId])
+  @@map("ledger_transaction")
+}
+
+model LedgerCheque {
+  id               Int               @id @default(autoincrement())
+  chequeNumber     String
+  bankAccountId    Int
+  billId           Int?
+  amount           Decimal           @db.Decimal(10, 2)
+  issueDate        DateTime
+  dueDate          DateTime
+  status           LedgerChequeStatus @default(PENDING)
+  description      String?
+  isReplacement    Boolean           @default(false)
+  replacedChequeId Int?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  bankAccount      LedgerBankAccount @relation(fields: [bankAccountId], references: [id])
+  bill             LedgerBill?       @relation(fields: [billId], references: [id])
+  replacementFor   LedgerCheque?     @relation("ChequeReplacement", fields: [replacedChequeId], references: [id])
+  replacedBy       LedgerCheque[]    @relation("ChequeReplacement")
+  transactions     LedgerTransaction[]
+
+  @@index([bankAccountId])
+  @@index([billId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([replacedChequeId])
+  @@map("ledger_cheque")
+}
+
+model LedgerInventory {
+  id            Int                 @id @default(autoincrement())
+  name          String
+  inventoryType LedgerInventoryType
+  quantity      Decimal             @db.Decimal(10, 2)
+  unit          String
+  description   String?
+  location      String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  transactions  LedgerTransaction[]
+
+  @@index([inventoryType])
+  @@map("ledger_inventory")
+}
+
+// Rename all enums to avoid conflicts
+enum LedgerBillType {
+  PURCHASE
+  SALE
+  EXPENSE
+  INCOME
+  OTHER
+}
+
+enum LedgerBillStatus {
+  PENDING
+  PARTIAL
+  PAID
+  CANCELLED
+}
+
+enum LedgerPartyType {
+  VENDOR
+  CUSTOMER
+  EMPLOYEE
+  OTHER
+}
+
+enum LedgerTransactionType {
+  PURCHASE
+  SALE
+  BANK_DEPOSIT
+  BANK_WITHDRAWAL
+  CASH_PAYMENT
+  CASH_RECEIPT
+  CHEQUE_PAYMENT
+  CHEQUE_RECEIPT
+  CHEQUE_RETURN
+  DYEING_EXPENSE
+  INVENTORY_ADJUSTMENT
+  EXPENSE
+  INCOME
+  TRANSFER
+  OTHER
+}
+
+enum LedgerChequeStatus {
+  PENDING
+  CLEARED
+  BOUNCED
+  REPLACED
+  CANCELLED
+}
+
+enum LedgerInventoryType {
+  WAREHOUSE
+  FOLDING
+  THREAD
+  GREY_CLOTH
+  READY_CLOTH
+  DYEING_MATERIAL
+  OTHER
+} 
