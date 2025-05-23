@@ -56,8 +56,8 @@ export async function GET(
             where: { id: Number(id) },
             include: {
                 threadPurchase: true,
-                inventoryEntries: true,
-                fabricProductions: true,
+                inventoryTransaction: true,
+                fabricProduction: true,
             },
         });
 
@@ -96,7 +96,7 @@ export async function GET(
                 unitPrice: Number(dyeingProcess.threadPurchase.unitPrice),
                 totalCost: Number(dyeingProcess.threadPurchase.totalCost),
             },
-            inventoryEntries: dyeingProcess.inventoryEntries.map(
+            inventoryTransaction: dyeingProcess.inventoryTransaction.map(
                 (entry: any) => ({
                     ...entry,
                     transactionDate: entry.transactionDate.toISOString(),
@@ -106,7 +106,7 @@ export async function GET(
                     totalCost: entry.totalCost ? Number(entry.totalCost) : null,
                 }),
             ),
-            fabricProductions: dyeingProcess.fabricProductions.map(
+            fabricProduction: dyeingProcess.fabricProduction.map(
                 (production: any) => ({
                     ...production,
                     productionDate: production.productionDate.toISOString(),
@@ -120,8 +120,8 @@ export async function GET(
                     totalCost: Number(production.totalCost),
                 }),
             ),
-            hasInventoryEntries: dyeingProcess.inventoryEntries.length > 0,
-            hasFabricProductions: dyeingProcess.fabricProductions.length > 0,
+            hasInventoryEntries: dyeingProcess.inventoryTransaction.length > 0,
+            hasFabricProductions: dyeingProcess.fabricProduction.length > 0,
         };
 
         return NextResponse.json(formattedDyeingProcess);
@@ -162,7 +162,7 @@ export async function PATCH(
             where: { id: Number(id) },
             include: {
                 threadPurchase: true,
-                inventoryEntries: true,
+                inventoryTransaction: true,
             },
         });
 
@@ -250,8 +250,8 @@ export async function PATCH(
             data: updateData,
             include: {
                 threadPurchase: true,
-                inventoryEntries: true,
-                fabricProductions: true,
+                inventoryTransaction: true,
+                fabricProduction: true,
             },
         });
 
@@ -260,89 +260,80 @@ export async function PATCH(
             body.addToInventory &&
             updateData.resultStatus === "COMPLETED" &&
             existingProcess.resultStatus !== "COMPLETED" &&
-            existingProcess.inventoryEntries.length === 0
+            existingProcess.inventoryTransaction.length === 0
         ) {
             try {
                 // Add to inventory logic...
-                const itemCode = `DT-${id}-${Date.now().toString().slice(-6)}`;
-
-                // Check if thread type exists
-                let threadType = await db.threadType.findFirst({
-                    where: {
-                        name: {
-                            equals: updatedProcess.threadPurchase.threadType,
-                            mode: "insensitive",
-                        },
-                    },
-                });
-
-                // Create thread type if it doesn't exist
-                if (!threadType) {
-                    threadType = await db.threadType.create({
-                        data: {
-                            name: updatedProcess.threadPurchase.threadType,
-                            units: updatedProcess.threadPurchase.unitOfMeasure,
-                            description: `Auto-created from dyeing process ${id}`,
-                            updatedAt: new Date(),
+                // Get or create thread type
+                let threadTypeId = null;
+                if (updatedProcess.threadPurchase?.threadType) {
+                    let threadType = await db.threadType.findFirst({
+                        where: {
+                            name: {
+                                equals: updatedProcess.threadPurchase.threadType,
+                                mode: "insensitive",
+                            },
                         },
                     });
+                    if (!threadType) {
+                        threadType = await db.threadType.create({
+                            data: {
+                                name: updatedProcess.threadPurchase.threadType,
+                                units: updatedProcess.threadPurchase.unitOfMeasure || "kg",
+                                description: `Thread type from dyeing process #${updatedProcess.id}`,
+                                updatedAt: new Date(),
+                            },
+                        });
+                    }
+                    threadTypeId = threadType.id;
                 }
 
-                // Create inventory entry
-                const inventory = await db.inventory.create({
+                // Calculate quantity and costs
+                const quantity = updatedProcess.outputQuantity;
+                const totalCost = updatedProcess.totalCost
+                    ? Number(updatedProcess.totalCost)
+                    : 0;
+                const unitCost = quantity > 0 ? totalCost / quantity : 0;
+                const markup = 0.25;
+                const colorInfo = updatedProcess.colorName
+                    ? `${updatedProcess.colorName} (${updatedProcess.colorCode || "No code"})`
+                    : "Dyed Thread";
+                const description = `${updatedProcess.threadPurchase?.threadType || "Thread"} - ${colorInfo}`;
+                const itemCode = `DT-${updatedProcess.id}-${Date.now().toString().slice(-6)}`;
+
+                // Create inventory item
+                const inventoryItem = await db.inventory.create({
                     data: {
                         itemCode,
-                        description: `Dyed Thread - ${
-                            updatedProcess.colorName || "Unknown"
-                        } (${updatedProcess.colorCode || "No Code"})`,
+                        description,
                         productType: ProductType.THREAD,
-                        threadTypeId: threadType.id,
-                        currentQuantity: 0, // Will be updated by transaction
-                        unitOfMeasure:
-                            updatedProcess.threadPurchase.unitOfMeasure,
-                        costPerUnit: updatedProcess.totalCost
-                            ? updatedProcess.totalCost
-                            : updatedProcess.threadPurchase.unitPrice,
-                        salePrice: updatedProcess.totalCost
-                            ? parseFloat(updatedProcess.totalCost.toString()) *
-                              1.2
-                            : parseFloat(
-                                  updatedProcess.threadPurchase.unitPrice.toString(),
-                              ) * 1.2,
+                        threadTypeId,
+                        currentQuantity: quantity,
+                        unitOfMeasure: updatedProcess.threadPurchase?.unitOfMeasure || "kg",
+                        minStockLevel: Math.ceil(quantity * 0.1),
+                        costPerUnit: unitCost,
+                        salePrice: unitCost * (1 + markup),
                         location: "Dyeing Department",
-                        minStockLevel: 10,
                         lastRestocked: new Date(),
+                        notes: `Auto-created from dyeing process ${updatedProcess.id}`,
                         updatedAt: new Date(),
-                        notes: `Auto-created from dyeing process ${id}`,
                     },
                 });
 
                 // Create inventory transaction
                 await db.inventoryTransaction.create({
                     data: {
-                        inventoryId: inventory.id,
+                        inventoryId: inventoryItem.id,
                         transactionType: InventoryTransactionType.PRODUCTION,
-                        quantity: updatedProcess.outputQuantity,
-                        remainingQuantity: updatedProcess.outputQuantity,
-                        unitCost: updatedProcess.totalCost
-                            ? updatedProcess.totalCost
-                            : updatedProcess.threadPurchase.unitPrice,
-                        totalCost: updatedProcess.totalCost
-                            ? updatedProcess.totalCost
-                            : updatedProcess.threadPurchase.totalCost,
+                        quantity: quantity,
+                        remainingQuantity: quantity,
+                        unitCost: unitCost,
+                        totalCost: totalCost,
                         referenceType: "DYEING",
                         referenceId: updatedProcess.id,
                         dyeingProcessId: updatedProcess.id,
-                        notes: `From dyeing process #${id}`,
+                        notes: `From dyeing process #${updatedProcess.id}`,
                         updatedAt: new Date(),
-                    },
-                });
-
-                // Update inventory quantity
-                await db.inventory.update({
-                    where: { id: inventory.id },
-                    data: {
-                        currentQuantity: updatedProcess.outputQuantity,
                     },
                 });
 
@@ -364,8 +355,8 @@ export async function PATCH(
             where: { id: Number(id) },
             include: {
                 threadPurchase: true,
-                inventoryEntries: true,
-                fabricProductions: true,
+                inventoryTransaction: true,
+                fabricProduction: true,
             },
         });
 
@@ -401,7 +392,7 @@ export async function PATCH(
                 unitPrice: Number(finalProcess.threadPurchase.unitPrice),
                 totalCost: Number(finalProcess.threadPurchase.totalCost),
             },
-            inventoryEntries: finalProcess.inventoryEntries.map(
+            inventoryTransaction: finalProcess.inventoryTransaction.map(
                 (entry: any) => ({
                     ...entry,
                     transactionDate: entry.transactionDate.toISOString(),
@@ -411,7 +402,7 @@ export async function PATCH(
                     totalCost: entry.totalCost ? Number(entry.totalCost) : null,
                 }),
             ),
-            fabricProductions: finalProcess.fabricProductions.map(
+            fabricProduction: finalProcess.fabricProduction.map(
                 (production: any) => ({
                     ...production,
                     productionDate: production.productionDate.toISOString(),
@@ -425,8 +416,8 @@ export async function PATCH(
                     totalCost: Number(production.totalCost),
                 }),
             ),
-            hasInventoryEntries: finalProcess.inventoryEntries.length > 0,
-            hasFabricProductions: finalProcess.fabricProductions.length > 0,
+            hasInventoryEntries: finalProcess.inventoryTransaction.length > 0,
+            hasFabricProductions: finalProcess.fabricProduction.length > 0,
         };
 
         return NextResponse.json({
@@ -478,7 +469,7 @@ export async function DELETE(
         const process = await db.dyeingProcess.findUnique({
             where: { id: Number(id) },
             include: {
-                fabricProductions: { take: 1 },
+                fabricProduction: { take: 1 },
             },
         });
 
@@ -490,7 +481,7 @@ export async function DELETE(
         }
 
         // Check if there are related fabric productions
-        if (process.fabricProductions.length > 0) {
+        if (process.fabricProduction.length > 0) {
             return NextResponse.json(
                 {
                     error: "Cannot delete dyeing process that has fabric productions",

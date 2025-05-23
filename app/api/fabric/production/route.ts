@@ -300,10 +300,25 @@ export async function POST(request: Request) {
                         where: { id: sourceThreadId },
                     });
                 } else {
+                    // Ensure a valid vendor exists for auto-created thread purchases
+                    let defaultVendor = await db.vendor.findFirst({
+                        where: { name: { contains: "System Vendor", mode: "insensitive" } },
+                    });
+                    if (!defaultVendor) {
+                        defaultVendor = await db.vendor.create({
+                            data: {
+                                name: "System Vendor",
+                                contact: "N/A",
+                                createdAt: new Date(),
+                                updatedAt: new Date(),
+                            },
+                        });
+                    }
+
                     // We need to create a placeholder thread purchase since the schema requires it
                     threadPurchase = await db.threadPurchase.create({
                         data: {
-                            vendorId: 1, // Use a default vendor ID
+                            vendorId: defaultVendor.id, // Use the default vendor ID
                             threadType:
                                 threadInventory.description || "Unknown",
                             colorStatus: "RAW",
@@ -389,6 +404,17 @@ export async function POST(request: Request) {
                 },
                 { status: 400 },
             );
+        }
+
+        // Before creating ThreadPurchase, validate vendorId
+        if (body.vendorId) {
+            const vendor = await db.vendor.findUnique({ where: { id: body.vendorId } });
+            if (!vendor) {
+                return NextResponse.json(
+                    { error: "Vendor does not exist" },
+                    { status: 400 }
+                );
+            }
         }
 
         // Start a transaction - all database operations should be inside this transaction

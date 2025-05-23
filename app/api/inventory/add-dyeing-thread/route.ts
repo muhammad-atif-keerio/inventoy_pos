@@ -63,6 +63,7 @@ export async function POST(request: NextRequest) {
                         units:
                             dyeingProcess.threadPurchase.unitOfMeasure || "kg",
                         description: `Thread type from dyeing process #${dyeingProcess.id}`,
+                        updatedAt: new Date(),
                     },
                 });
                 threadTypeId = newThreadType.id;
@@ -105,6 +106,7 @@ export async function POST(request: NextRequest) {
                     body.notes ||
                     `Added from dyeing process #${dyeingProcess.id}`,
                 threadTypeId,
+                updatedAt: new Date(),
             },
             include: {
                 threadType: true,
@@ -124,6 +126,7 @@ export async function POST(request: NextRequest) {
                 notes: `Initial inventory from dyeing process #${dyeingProcess.id}`,
                 dyeingProcessId,
                 threadPurchaseId: dyeingProcess.threadPurchaseId,
+                updatedAt: new Date(),
             },
         });
 

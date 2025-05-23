@@ -139,6 +139,7 @@ export async function POST(request: NextRequest) {
                     description: `Auto-created for dyed thread from process ID ${body.dyeingProcessId}`,
                     units:
                         dyeingProcess.threadPurchase.unitOfMeasure || "meters",
+                    updatedAt: new Date(),
                 },
             });
             threadTypeId = newThreadType.id;
@@ -170,6 +171,7 @@ export async function POST(request: NextRequest) {
                     notes:
                         body.notes ||
                         `Dyed from Thread Order #${dyeingProcess.threadPurchaseId}. Color: ${colorName}`,
+                    updatedAt: new Date(),
                 },
             });
 
@@ -188,6 +190,7 @@ export async function POST(request: NextRequest) {
                     notes:
                         body.transactionNotes ||
                         `Thread dyeing process completed for ${colorName} ${threadType}`,
+                    updatedAt: new Date(),
                 },
             });
 

@@ -1009,38 +1009,42 @@ export function DyeingFormDialog({
                             />
                         )}
 
-                        {/* Create Remaining Thread option - only show in create mode and when there's remaining quantity */}
-                        {!editMode && hasRemainingQuantity && (
-                            <FormField
-                                control={form.control}
-                                name="createRemainingThreadOrder"
-                                render={({ field }) => (
-                                    <FormItem className="flex flex-row items-start space-y-0 space-x-3 rounded-md border p-4">
-                                        <FormControl>
-                                            <Checkbox
-                                                checked={field.value}
-                                                onCheckedChange={field.onChange}
-                                                disabled={loading}
-                                            />
-                                        </FormControl>
-                                        <div className="space-y-1 leading-none">
-                                            <FormLabel>
-                                                Create Thread Order for
-                                                Remaining Quantity
-                                            </FormLabel>
-                                            <FormDescription>
-                                                {selectedThread &&
-                                                dyeQuantity > 0 &&
-                                                selectedThread.quantity >
-                                                    dyeQuantity
-                                                    ? `Create a new thread order for the remaining ${selectedThread.quantity - dyeQuantity} ${selectedThread.unitOfMeasure}`
-                                                    : "Create a new thread order for any remaining undyed thread"}
-                                            </FormDescription>
-                                        </div>
-                                    </FormItem>
-                                )}
-                            />
-                        )}
+                        <div className="hidden">
+                            {/* Create Remaining Thread option - only show in create mode and when there's remaining quantity */}
+                            {!editMode && hasRemainingQuantity && (
+                                <FormField
+                                    control={form.control}
+                                    name="createRemainingThreadOrder"
+                                    render={({ field }) => (
+                                        <FormItem className="flex flex-row items-start space-y-0 space-x-3 rounded-md border p-4">
+                                            <FormControl>
+                                                <Checkbox
+                                                    checked={field.value}
+                                                    onCheckedChange={
+                                                        field.onChange
+                                                    }
+                                                    disabled={loading}
+                                                />
+                                            </FormControl>
+                                            <div className="space-y-1 leading-none">
+                                                <FormLabel>
+                                                    Create Thread Order for
+                                                    Remaining Quantity
+                                                </FormLabel>
+                                                <FormDescription>
+                                                    {selectedThread &&
+                                                    dyeQuantity > 0 &&
+                                                    selectedThread.quantity >
+                                                        dyeQuantity
+                                                        ? `Create a new thread order for the remaining ${selectedThread.quantity - dyeQuantity} ${selectedThread.unitOfMeasure}`
+                                                        : "Create a new thread order for any remaining undyed thread"}
+                                                </FormDescription>
+                                            </div>
+                                        </FormItem>
+                                    )}
+                                />
+                            )}
+                        </div>
 
                         <DialogFooter>
                             <Button

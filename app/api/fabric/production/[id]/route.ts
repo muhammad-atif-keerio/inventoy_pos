@@ -33,7 +33,7 @@ export async function GET(
             include: {
                 threadPurchase: true,
                 dyeingProcess: true,
-                inventoryEntries: includeInventory,
+                inventoryTransaction: includeInventory,
             },
         });
 
@@ -70,14 +70,14 @@ export async function GET(
             createdAt: production.productionDate.toISOString(),
             // Include inventory information if requested
             availableInInventory: includeInventory
-                ? production.inventoryEntries &&
-                  production.inventoryEntries.length > 0
+                ? production.inventoryTransaction &&
+                  production.inventoryTransaction.length > 0
                 : undefined,
             inventoryItemId:
                 includeInventory &&
-                production.inventoryEntries &&
-                production.inventoryEntries.length > 0
-                    ? production.inventoryEntries[0].inventoryId
+                production.inventoryTransaction &&
+                production.inventoryTransaction.length > 0
+                    ? production.inventoryTransaction[0].inventoryId
                     : undefined,
         };
 
@@ -116,7 +116,7 @@ export async function PUT(
             include: {
                 threadPurchase: true,
                 dyeingProcess: true,
-                inventoryEntries: true,
+                inventoryTransaction: true,
             },
         });
 
@@ -240,6 +240,7 @@ export async function PUT(
                             name: updatedProduction.fabricType,
                             units: updatedProduction.unitOfMeasure || "meters",
                             description: `Fabric type for ${updatedProduction.fabricType}`,
+                            updatedAt: new Date(),
                         },
                     });
                 }
@@ -259,6 +260,7 @@ export async function PUT(
                         minStockLevel: 50, // Default value
                         lastRestocked: new Date(),
                         notes: updatedProduction.remarks || undefined,
+                        updatedAt: new Date(),
                     },
                 });
 
@@ -276,6 +278,7 @@ export async function PUT(
                         referenceId: updatedProduction.id,
                         fabricProductionId: updatedProduction.id,
                         notes: `Inventory from completed fabric production #${updatedProduction.id}`,
+                        updatedAt: new Date(),
                     },
                 });
                 // Include inventory status in the response
@@ -339,7 +342,7 @@ export async function DELETE(
         const existingProduction = await db.fabricProduction.findUnique({
             where: { id: Number(id) },
             include: {
-                inventoryEntries: true,
+                inventoryTransaction: true,
             },
         });
 
@@ -352,8 +355,8 @@ export async function DELETE(
 
         // Check if there are inventory entries and prevent deletion if found
         if (
-            existingProduction.inventoryEntries &&
-            existingProduction.inventoryEntries.length > 0
+            existingProduction.inventoryTransaction &&
+            existingProduction.inventoryTransaction.length > 0
         ) {
             return NextResponse.json(
                 {
