@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
                         name: threadPurchase.threadType,
                         units: threadPurchase.unitOfMeasure || "kg",
                         description: `Thread type from purchase #${threadPurchase.id}`,
+                        updatedAt: new Date(),
                     },
                 });
                 threadTypeId = newThreadType.id;
@@ -98,6 +99,7 @@ export async function POST(request: NextRequest) {
                     body.notes ||
                     `Added from thread purchase #${threadPurchase.id}`,
                 threadTypeId,
+                updatedAt: new Date(),
             },
             include: {
                 threadType: true,
@@ -116,6 +118,7 @@ export async function POST(request: NextRequest) {
                 totalCost: unitPrice * quantity,
                 notes: `Initial inventory from thread purchase #${threadPurchase.id}`,
                 threadPurchaseId,
+                updatedAt: new Date(),
             },
         });
 
