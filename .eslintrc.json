@@ -1,0 +1,14 @@
+{
+    "extends": ["next/core-web-vitals"],
+    "rules": {
+        "no-unused-vars": "off",
+        "@typescript-eslint/no-unused-vars": "off",
+        "@typescript-eslint/no-explicit-any": "off",
+        "react-hooks/exhaustive-deps": "off",
+        "react/no-unescaped-entities": "off",
+        "@typescript-eslint/no-require-imports": "off",
+        "prefer-const": "warn",
+        "no-var": "warn"
+    },
+    "ignorePatterns": ["node_modules/", ".next/", "out/"]
+}

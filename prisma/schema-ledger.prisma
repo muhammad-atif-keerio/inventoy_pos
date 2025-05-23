@@ -1,0 +1,291 @@
+// This is a separate schema file for the ledger system
+// It defines a simplified accounting and inventory tracking system for textile business
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/@prisma/ledger-client"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("LEDGER_DATABASE_URL")
+  directUrl = env("LEDGER_DIRECT_URL")
+}
+
+// LedgerEntry model for the unified ledger functionality
+model LedgerEntry {
+  id              Int                 @id @default(autoincrement())
+  entryType       LedgerEntryType
+  entryDate       DateTime            @default(now())
+  dueDate         DateTime?
+  description     String
+  amount          Decimal             @db.Decimal(10, 2)
+  remainingAmount Decimal             @db.Decimal(10, 2)
+  status          LedgerEntryStatus   @default(PENDING)
+  vendorId        Int?
+  customerId      Int?
+  reference       String?
+  notes           String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime
+  transactions    LedgerTransaction[]
+  
+  @@index([customerId])
+  @@index([entryDate])
+  @@index([entryType])
+  @@index([status])
+  @@index([vendorId])
+}
+
+model LedgerTransaction {
+  id              Int         @id @default(autoincrement())
+  ledgerEntryId   Int
+  transactionDate DateTime    @default(now())
+  amount          Decimal     @db.Decimal(10, 2)
+  paymentMode     String
+  chequeNumber    String?
+  bankName        String?
+  referenceNumber String?
+  notes           String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime
+  ledgerEntry     LedgerEntry @relation(fields: [ledgerEntryId], references: [id])
+  
+  @@index([ledgerEntryId])
+  @@index([transactionDate])
+}
+
+// Khata (Account Book) model
+model Khata {
+  id           Int           @id @default(autoincrement())
+  name         String
+  description  String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  accounts     BankAccount[]
+  bills        Bill[]
+  parties      Party[]
+  transactions Transaction[]
+}
+
+model Bill {
+  id           Int           @id @default(autoincrement())
+  billNumber   String        @unique
+  khataId      Int
+  partyId      Int?
+  billDate     DateTime
+  dueDate      DateTime?
+  amount       Decimal       @db.Decimal(10, 2)
+  description  String?
+  billType     BillType
+  status       BillStatus    @default(PENDING)
+  paidAmount   Decimal       @default(0) @db.Decimal(10, 2)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  khata        Khata         @relation(fields: [khataId], references: [id])
+  party        Party?        @relation(fields: [partyId], references: [id])
+  cheques      Cheque[]
+  transactions Transaction[]
+
+  @@index([khataId])
+  @@index([partyId])
+  @@index([billDate])
+  @@index([status])
+}
+
+model Party {
+  id           Int           @id @default(autoincrement())
+  name         String
+  type         PartyType
+  khataId      Int
+  contact      String?
+  phoneNumber  String?
+  email        String?
+  address      String?
+  city         String?
+  description  String?
+  customerId   Int?
+  vendorId     Int?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  bills        Bill[]
+  khata        Khata         @relation(fields: [khataId], references: [id])
+  transactions Transaction[]
+
+  @@index([khataId])
+  @@index([type])
+  @@index([customerId])
+  @@index([vendorId])
+}
+
+model BankAccount {
+  id            Int           @id @default(autoincrement())
+  accountName   String
+  accountNumber String
+  bankName      String
+  branchName    String?
+  khataId       Int
+  balance       Decimal       @default(0) @db.Decimal(10, 2)
+  description   String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  khata         Khata         @relation(fields: [khataId], references: [id])
+  cheques       Cheque[]
+  transactions  Transaction[]
+
+  @@index([khataId])
+}
+
+model Transaction {
+  id              Int             @id @default(autoincrement())
+  khataId         Int
+  transactionDate DateTime
+  amount          Decimal         @db.Decimal(10, 2)
+  description     String
+  transactionType TransactionType
+  partyId         Int?
+  billId          Int?
+  bankAccountId   Int?
+  chequeId        Int?
+  inventoryId     Int?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  bankAccount     BankAccount?    @relation(fields: [bankAccountId], references: [id])
+  bill            Bill?           @relation(fields: [billId], references: [id])
+  cheque          Cheque?         @relation(fields: [chequeId], references: [id])
+  inventory       Inventory?      @relation(fields: [inventoryId], references: [id])
+  khata           Khata           @relation(fields: [khataId], references: [id])
+  party           Party?          @relation(fields: [partyId], references: [id])
+
+  @@index([khataId])
+  @@index([transactionDate])
+  @@index([transactionType])
+  @@index([partyId])
+  @@index([billId])
+  @@index([bankAccountId])
+  @@index([chequeId])
+  @@index([inventoryId])
+}
+
+model Cheque {
+  id               Int           @id @default(autoincrement())
+  chequeNumber     String
+  bankAccountId    Int
+  billId           Int?
+  amount           Decimal       @db.Decimal(10, 2)
+  issueDate        DateTime
+  dueDate          DateTime
+  status           ChequeStatus  @default(PENDING)
+  description      String?
+  isReplacement    Boolean       @default(false)
+  replacedChequeId Int?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  bankAccount      BankAccount   @relation(fields: [bankAccountId], references: [id])
+  bill             Bill?         @relation(fields: [billId], references: [id])
+  replacementFor   Cheque?       @relation("ChequeReplacement", fields: [replacedChequeId], references: [id])
+  replacedBy       Cheque[]      @relation("ChequeReplacement")
+  transactions     Transaction[]
+
+  @@index([bankAccountId])
+  @@index([billId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([replacedChequeId])
+}
+
+model Inventory {
+  id            Int           @id @default(autoincrement())
+  name          String
+  inventoryType InventoryType
+  quantity      Decimal       @db.Decimal(10, 2)
+  unit          String
+  description   String?
+  location      String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  transactions  Transaction[]
+
+  @@index([inventoryType])
+}
+
+enum BillType {
+  PURCHASE
+  SALE
+  EXPENSE
+  INCOME
+  OTHER
+}
+
+enum BillStatus {
+  PENDING
+  PARTIAL
+  PAID
+  CANCELLED
+}
+
+enum PartyType {
+  VENDOR
+  CUSTOMER
+  EMPLOYEE
+  OTHER
+}
+
+enum TransactionType {
+  PURCHASE
+  SALE
+  BANK_DEPOSIT
+  BANK_WITHDRAWAL
+  CASH_PAYMENT
+  CASH_RECEIPT
+  CHEQUE_PAYMENT
+  CHEQUE_RECEIPT
+  CHEQUE_RETURN
+  DYEING_EXPENSE
+  INVENTORY_ADJUSTMENT
+  EXPENSE
+  INCOME
+  TRANSFER
+  OTHER
+}
+
+enum ChequeStatus {
+  PENDING
+  CLEARED
+  BOUNCED
+  REPLACED
+  CANCELLED
+}
+
+enum InventoryType {
+  WAREHOUSE
+  FOLDING
+  THREAD
+  GREY_CLOTH
+  READY_CLOTH
+  DYEING_MATERIAL
+  OTHER
+}
+
+// Ledger enums
+enum LedgerEntryType {
+  BILL
+  TRANSACTION
+  CHEQUE
+  INVENTORY
+  BANK
+  PAYABLE
+  RECEIVABLE
+  KHATA
+}
+
+enum LedgerEntryStatus {
+  PENDING
+  PARTIAL
+  COMPLETED
+  CANCELLED
+  PAID
+  CLEARED
+  BOUNCED
+  REPLACED
+}

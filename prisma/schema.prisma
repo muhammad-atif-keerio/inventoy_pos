@@ -1,0 +1,395 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+generator seed {
+  provider = "prisma-client-js"
+  seed     = "npm run seed"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model ChequeTransaction {
+  id            Int          @id @default(autoincrement())
+  paymentId     Int          @unique
+  chequeNumber  String
+  bank          String
+  branch        String?
+  chequeAmount  Decimal      @db.Decimal(10, 2)
+  issueDate     DateTime
+  clearanceDate DateTime?
+  chequeStatus  ChequeStatus @default(PENDING)
+  remarks       String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime
+  payment       Payment      @relation(fields: [paymentId], references: [id], name: "PaymentToCheque")
+
+  @@index([chequeNumber])
+  @@index([chequeStatus])
+}
+
+model Customer {
+  id          Int           @id @default(autoincrement())
+  name        String
+  contact     String
+  email       String?
+  address     String?
+  city        String?
+  notes       String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime
+  ledgerEntry LedgerEntry[] @relation("CustomerToLedgerEntry")
+  salesOrder  SalesOrder[]  @relation("CustomerToSalesOrder")
+}
+
+model DyeingProcess {
+  id                   Int                    @id @default(autoincrement())
+  threadPurchaseId     Int
+  dyeDate              DateTime               @default(now())
+  dyeParameters        Json?
+  colorCode            String?
+  colorName            String?
+  dyeQuantity          Int
+  laborCost            Decimal?               @db.Decimal(10, 2)
+  dyeMaterialCost      Decimal?               @db.Decimal(10, 2)
+  totalCost            Decimal?               @db.Decimal(10, 2)
+  resultStatus         String
+  inventoryStatus      String?
+  outputQuantity       Int
+  completionDate       DateTime?
+  remarks              String?
+  threadPurchase       ThreadPurchase         @relation(fields: [threadPurchaseId], references: [id], name: "ThreadToDyeing")
+  fabricProduction     FabricProduction[]     @relation("DyeingToFabric")
+  inventoryTransaction InventoryTransaction[] @relation("DyeingToInventory")
+
+  @@index([dyeDate])
+}
+
+model FabricProduction {
+  id                   Int                    @id @default(autoincrement())
+  sourceThreadId       Int
+  dyeingProcessId      Int?
+  productionDate       DateTime               @default(now())
+  fabricType           String
+  dimensions           String
+  batchNumber          String
+  quantityProduced     Int
+  threadUsed           Int
+  threadWastage        Int?
+  unitOfMeasure        String                 @default("meters")
+  productionCost       Decimal                @db.Decimal(10, 2)
+  laborCost            Decimal?               @db.Decimal(10, 2)
+  totalCost            Decimal                @db.Decimal(10, 2)
+  remarks              String?
+  status               ProductionStatus       @default(PENDING)
+  inventoryStatus      String?
+  completionDate       DateTime?
+  dyeingProcess        DyeingProcess?         @relation(fields: [dyeingProcessId], references: [id], name: "DyeingToFabric")
+  threadPurchase       ThreadPurchase         @relation(fields: [sourceThreadId], references: [id], name: "ThreadToFabric")
+  inventoryTransaction InventoryTransaction[] @relation("FabricToInventory")
+  salesOrderItem       SalesOrderItem[]       @relation("FabricToSalesItem")
+
+  @@index([fabricType])
+  @@index([productionDate])
+  @@index([status])
+}
+
+model FabricType {
+  id          Int         @id @default(autoincrement())
+  name        String      @unique
+  description String?
+  units       String      @default("meters")
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime
+  inventory   Inventory[] @relation("FabricTypeToInventory")
+}
+
+model Inventory {
+  id                   Int                    @id @default(autoincrement())
+  itemCode             String                 @unique
+  description          String
+  productType          ProductType
+  threadTypeId         Int?
+  fabricTypeId         Int?
+  currentQuantity      Int                    @default(0)
+  unitOfMeasure        String
+  location             String?
+  minStockLevel        Int                    @default(0)
+  costPerUnit          Decimal                @db.Decimal(10, 2)
+  salePrice            Decimal                @db.Decimal(10, 2)
+  lastRestocked        DateTime?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime
+  notes                String?
+  fabricType           FabricType?            @relation(fields: [fabricTypeId], references: [id], name: "FabricTypeToInventory")
+  threadType           ThreadType?            @relation(fields: [threadTypeId], references: [id], name: "ThreadTypeToInventory")
+  inventoryTransaction InventoryTransaction[] @relation("InventoryToTransaction")
+
+  @@index([itemCode])
+  @@index([productType])
+}
+
+model InventoryTransaction {
+  id                 Int                      @id @default(autoincrement())
+  inventoryId        Int
+  transactionDate    DateTime                 @default(now())
+  transactionType    InventoryTransactionType
+  quantity           Int
+  remainingQuantity  Int
+  unitCost           Decimal?                 @db.Decimal(10, 2)
+  totalCost          Decimal?                 @db.Decimal(10, 2)
+  referenceType      String?
+  referenceId        Int?
+  notes              String?
+  threadPurchaseId   Int?
+  dyeingProcessId    Int?
+  fabricProductionId Int?
+  salesOrderId       Int?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime
+  dyeingProcess      DyeingProcess?           @relation(fields: [dyeingProcessId], references: [id], name: "DyeingToInventory")
+  fabricProduction   FabricProduction?        @relation(fields: [fabricProductionId], references: [id], name: "FabricToInventory")
+  inventory          Inventory                @relation(fields: [inventoryId], references: [id], name: "InventoryToTransaction")
+  salesOrder         SalesOrder?              @relation(fields: [salesOrderId], references: [id], name: "SalesOrderToInventory")
+  threadPurchase     ThreadPurchase?          @relation(fields: [threadPurchaseId], references: [id], name: "ThreadToInventory")
+
+  @@index([inventoryId])
+  @@index([transactionDate])
+  @@index([transactionType])
+}
+
+model LedgerEntry {
+  id              Int                 @id @default(autoincrement())
+  entryType       LedgerEntryType
+  entryDate       DateTime            @default(now())
+  dueDate         DateTime?
+  description     String
+  amount          Decimal             @db.Decimal(10, 2)
+  remainingAmount Decimal             @db.Decimal(10, 2)
+  status          LedgerEntryStatus   @default(PENDING)
+  vendorId        Int?
+  customerId      Int?
+  reference       String?
+  notes           String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime
+  customer        Customer?           @relation(fields: [customerId], references: [id], name: "CustomerToLedgerEntry")
+  vendor          Vendor?             @relation(fields: [vendorId], references: [id], name: "VendorToLedgerEntry")
+  transactions    LedgerTransaction[] @relation("LedgerEntryToTransaction")
+
+  @@index([customerId])
+  @@index([entryDate])
+  @@index([entryType])
+  @@index([status])
+  @@index([vendorId])
+}
+
+model LedgerTransaction {
+  id              Int         @id @default(autoincrement())
+  ledgerEntryId   Int
+  transactionDate DateTime    @default(now())
+  amount          Decimal     @db.Decimal(10, 2)
+  paymentMode     PaymentMode
+  chequeNumber    String?
+  bankName        String?
+  referenceNumber String?
+  notes           String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime
+  ledgerEntry     LedgerEntry @relation(fields: [ledgerEntryId], references: [id], name: "LedgerEntryToTransaction")
+
+  @@index([ledgerEntryId])
+  @@index([transactionDate])
+}
+
+model Payment {
+  id                Int                @id @default(autoincrement())
+  transactionDate   DateTime           @default(now())
+  amount            Decimal            @db.Decimal(10, 2)
+  mode              PaymentMode
+  salesOrderId      Int?
+  threadPurchaseId  Int?
+  referenceNumber   String?
+  description       String
+  remarks           String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime
+  chequeTransaction ChequeTransaction? @relation("PaymentToCheque")
+  salesOrder        SalesOrder?        @relation(fields: [salesOrderId], references: [id], name: "SalesOrderToPayment")
+  threadPurchase    ThreadPurchase?    @relation(fields: [threadPurchaseId], references: [id], name: "ThreadPurchaseToPayment")
+
+  @@index([mode])
+  @@index([transactionDate])
+}
+
+model SalesOrder {
+  id                   Int                    @id @default(autoincrement())
+  orderNumber          String                 @unique
+  orderDate            DateTime               @default(now())
+  customerId           Int
+  paymentMode          PaymentMode?
+  paymentStatus        PaymentStatus          @default(PENDING)
+  deliveryDate         DateTime?
+  deliveryAddress      String?
+  remarks              String?
+  discount             Decimal?               @db.Decimal(10, 2)
+  tax                  Decimal?               @db.Decimal(10, 2)
+  totalSale            Decimal                @db.Decimal(10, 2)
+  inventoryTransaction InventoryTransaction[] @relation("SalesOrderToInventory")
+  payments             Payment[]              @relation("SalesOrderToPayment")
+  customer             Customer               @relation(fields: [customerId], references: [id], name: "CustomerToSalesOrder")
+  items                SalesOrderItem[]       @relation("SalesOrderToItem")
+
+  @@index([customerId])
+  @@index([orderDate])
+  @@index([paymentStatus])
+}
+
+model SalesOrderItem {
+  id               Int              @id @default(autoincrement())
+  salesOrderId     Int
+  productType      ProductType
+  productId        Int
+  quantitySold     Int
+  unitPrice        Decimal          @db.Decimal(10, 2)
+  discount         Decimal?         @db.Decimal(10, 2)
+  tax              Decimal?         @db.Decimal(10, 2)
+  subtotal         Decimal          @db.Decimal(10, 2)
+  inventoryItemId  Int?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime
+  fabricProduction FabricProduction @relation(fields: [productId], references: [id], name: "FabricToSalesItem", map: "SalesOrderItem_fabricProductionId_fkey")
+  salesOrder       SalesOrder       @relation(fields: [salesOrderId], references: [id], name: "SalesOrderToItem", onDelete: Cascade)
+  threadPurchase   ThreadPurchase   @relation(fields: [productId], references: [id], name: "ThreadToSalesItem", map: "SalesOrderItem_threadPurchaseId_fkey")
+
+  @@index([productId])
+  @@index([productType])
+  @@index([salesOrderId])
+}
+
+model ThreadPurchase {
+  id                   Int                    @id @default(autoincrement())
+  vendorId             Int
+  orderDate            DateTime               @default(now())
+  threadType           String
+  color                String?
+  colorStatus          ColorStatus
+  quantity             Int
+  unitPrice            Decimal                @db.Decimal(10, 2)
+  totalCost            Decimal                @db.Decimal(10, 2)
+  unitOfMeasure        String                 @default("meters")
+  deliveryDate         DateTime?
+  remarks              String?
+  reference            String?
+  received             Boolean                @default(false)
+  receivedAt           DateTime?
+  inventoryStatus      String?
+  dyeingProcess        DyeingProcess[]        @relation("ThreadToDyeing")
+  fabricProduction     FabricProduction[]     @relation("ThreadToFabric")
+  inventoryTransaction InventoryTransaction[] @relation("ThreadToInventory")
+  payments             Payment[]              @relation("ThreadPurchaseToPayment")
+  salesOrderItem       SalesOrderItem[]       @relation("ThreadToSalesItem")
+  vendor               Vendor                 @relation(fields: [vendorId], references: [id], name: "VendorToPurchase")
+
+  @@index([orderDate])
+  @@index([threadType])
+}
+
+model ThreadType {
+  id          Int         @id @default(autoincrement())
+  name        String      @unique
+  description String?
+  units       String      @default("meters")
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime
+  inventory   Inventory[] @relation("ThreadTypeToInventory")
+}
+
+model Vendor {
+  id             Int              @id @default(autoincrement())
+  name           String
+  contact        String
+  email          String?
+  address        String?
+  city           String?
+  notes          String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime
+  ledgerEntry    LedgerEntry[]    @relation("VendorToLedgerEntry")
+  threadPurchase ThreadPurchase[] @relation("VendorToPurchase")
+}
+
+enum ChequeStatus {
+  PENDING
+  CLEARED
+  BOUNCED
+}
+
+enum ColorStatus {
+  COLORED
+  RAW
+}
+
+enum InventoryTransactionType {
+  PURCHASE
+  PRODUCTION
+  SALES
+  ADJUSTMENT
+  TRANSFER
+}
+
+enum LedgerEntryStatus {
+  PENDING
+  PARTIAL
+  COMPLETED
+  CANCELLED
+  PAID
+  CLEARED
+  BOUNCED
+  REPLACED
+}
+
+enum LedgerEntryType {
+  PAYABLE
+  RECEIVABLE
+  KHATA
+  BILL
+  TRANSACTION
+  CHEQUE
+  INVENTORY
+  BANK
+}
+
+enum PaymentMode {
+  CASH
+  CHEQUE
+  ONLINE
+}
+
+enum PaymentStatus {
+  PAID
+  PARTIAL
+  PENDING
+  CANCELLED
+}
+
+enum ProductType {
+  THREAD
+  FABRIC
+}
+
+enum ProductionStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TransactionType {
+  IN
+  OUT
+}
