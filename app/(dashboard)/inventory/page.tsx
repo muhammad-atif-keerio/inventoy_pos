@@ -91,8 +91,8 @@ const Progress: React.FC<{ value?: number; className?: string }> = ({
 // Wrap the main component in this function
 function InventoryContent() {
     const searchParams = useSearchParams();
-    const typeFilter = searchParams.get("type");
-    const sourceFilter = searchParams.get("source");
+    const typeFilter = searchParams?.get("type");
+    const sourceFilter = searchParams?.get("source");
 
     const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);

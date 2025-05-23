@@ -48,7 +48,7 @@ import { ThreadPurchase } from "../columns";
 export default function ThreadOrderDetailsPage() {
     const params = useParams();
     const router = useRouter();
-    const id = params.id as string;
+    const id = params?.id as string;
 
     const [order, setOrder] = React.useState<ThreadPurchase | null>(null);
     const [loading, setLoading] = React.useState(true);

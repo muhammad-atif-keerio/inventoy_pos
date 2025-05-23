@@ -122,13 +122,13 @@ export default function EditThreadOrderPage() {
     // Fetch thread order data
     React.useEffect(() => {
         const fetchOrder = async () => {
-            if (!params.id) return;
+            if (!params?.id) return;
 
             setIsFetching(true);
             setError(null);
 
             try {
-                const response = await fetch(`/api/thread/${params.id}`);
+                const response = await fetch(`/api/thread/${params?.id}`);
 
                 if (!response.ok) {
                     throw new Error("Failed to fetch thread order");
@@ -170,7 +170,7 @@ export default function EditThreadOrderPage() {
         };
 
         fetchOrder();
-    }, [params.id, form]);
+    }, [params?.id, form]);
 
     // Form submission handler
     const onSubmit = async (values: FormData) => {
@@ -192,7 +192,7 @@ export default function EditThreadOrderPage() {
                     : null,
             };
 
-            const response = await fetch(`/api/thread/${params.id}`, {
+            const response = await fetch(`/api/thread/${params?.id}`, {
                 method: "PATCH",
                 headers: {
                     "Content-Type": "application/json",

@@ -22,7 +22,7 @@ interface Transaction {
 // GET /api/ledger/:id/transactions - Get transactions for a specific ledger entry
 export async function GET(
     request: NextRequest,
-    context: { params: { id: string } },
+    context: { params: Promise<{ id: string }> },
 ) {
     try {
         // Ensure we properly await params before accessing

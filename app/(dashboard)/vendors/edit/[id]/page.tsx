@@ -61,7 +61,7 @@ type FormValues = z.infer<typeof formSchema>;
 export default function EditVendorPage() {
     const router = useRouter();
     const params = useParams();
-    const vendorId = params.id as string;
+    const vendorId = params?.id as string;
 
     const [vendor, setVendor] = useState<VendorItem | null>(null);
     const [isLoading, setIsLoading] = useState(true);

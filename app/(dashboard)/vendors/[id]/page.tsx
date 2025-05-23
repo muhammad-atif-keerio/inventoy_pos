@@ -77,7 +77,7 @@ interface VendorWithThreadPurchases extends VendorItem {
 export default function VendorDetailPage() {
     const params = useParams();
     const router = useRouter();
-    const vendorId = params.id as string;
+    const vendorId = params?.id as string;
 
     const [vendor, setVendor] = useState<VendorWithThreadPurchases | null>(
         null,

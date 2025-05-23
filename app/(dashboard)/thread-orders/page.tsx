@@ -200,19 +200,19 @@ function ThreadOrdersContent() {
 
     // State for filters
     const [filters, setFilters] = useState({
-        vendorId: searchParams.get("vendor"),
-        colorStatus: searchParams.get("colorStatus"),
-        received: searchParams.get("received"),
-        threadType: searchParams.get("threadType"),
+        vendorId: searchParams?.get("vendor"),
+        colorStatus: searchParams?.get("colorStatus"),
+        received: searchParams?.get("received"),
+        threadType: searchParams?.get("threadType"),
         dateRange: {
-            from: searchParams.get("from")
-                ? new Date(searchParams.get("from") as string)
+            from: searchParams?.get("from")
+                ? new Date(searchParams?.get("from") as string)
                 : null,
-            to: searchParams.get("to")
-                ? new Date(searchParams.get("to") as string)
+            to: searchParams?.get("to")
+                ? new Date(searchParams?.get("to") as string)
                 : null,
         },
-        searchQuery: searchParams.get("search") || "",
+        searchQuery: searchParams?.get("search") || "",
     });
 
     // UI state

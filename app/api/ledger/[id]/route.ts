@@ -35,10 +35,10 @@ interface LedgerTransaction {
 // GET /api/ledger/:id - Get a specific ledger entry with transactions
 export async function GET(
     request: NextRequest,
-    { params }: { params: { id: string } },
+    { params }: { params: Promise<{ id: string }> },
 ) {
     try {
-        const { id } = params;
+        const { id } = await params;
 
         // If it's a composite ID (type:id), extract the parts
         let entryId = id;
@@ -226,10 +226,10 @@ export async function GET(
 // PATCH /api/ledger/:id - Update a ledger entry
 export async function PATCH(
     request: NextRequest,
-    { params }: { params: { id: string } },
+    { params }: { params: Promise<{ id: string }> },
 ) {
     try {
-        const { id } = params;
+        const { id } = await  params;
         const data = await request.json();
 
         // If it's a composite ID (type:id), extract the parts
@@ -338,10 +338,10 @@ export async function PATCH(
 // DELETE /api/ledger/:id - Delete a ledger entry
 export async function DELETE(
     request: NextRequest,
-    { params }: { params: { id: string } },
+    { params }: { params: Promise<{ id: string }> },
 ) {
     try {
-        const { id } = params;
+        const { id } = await params;
 
         // If it's a composite ID (type:id), extract the parts
         let entryId = id;
