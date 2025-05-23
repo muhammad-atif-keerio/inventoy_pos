@@ -113,18 +113,33 @@ export function SalesAnalytics() {
         async function fetchAnalytics() {
             setLoading(true);
             try {
-                // Call the real API endpoint
                 const response = await fetch(
                     `/api/sales/analytics?range=${timeRange}`,
+                    {
+                        method: "GET",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        cache: "no-store",
+                    },
                 );
+
                 if (!response.ok) {
                     const errorData = await response.json();
                     throw new Error(
                         errorData.error || "Failed to fetch analytics data",
                     );
                 }
-                const data = await response.json();
-                setAnalyticsData(data);
+
+                const responseData = await response.json();
+
+                if (!responseData.success) {
+                    throw new Error(
+                        responseData.error || "Failed to fetch analytics data",
+                    );
+                }
+
+                setAnalyticsData(responseData.data);
             } catch (error) {
                 console.error("Error fetching analytics:", error);
                 toast.error("Failed to load analytics data", {

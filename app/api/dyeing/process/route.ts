@@ -91,6 +91,7 @@ async function addDyedThreadToInventory(
             data: {
                 name: threadPurchase.threadType,
                 units: threadPurchase.unitOfMeasure || "meters",
+                updatedAt: new Date(),
             },
         });
     }
@@ -125,6 +126,7 @@ async function addDyedThreadToInventory(
                     : unitPrice * 1.2, // 20% markup
                 location: "Dye Facility",
                 notes: `Dyed from Thread Order #${threadPurchase.id}. Color: ${colorName || "Unknown"}`,
+                updatedAt: new Date(),
             },
         });
     }
@@ -144,6 +146,7 @@ async function addDyedThreadToInventory(
             referenceId: dyeingProcess.id,
             dyeingProcessId: dyeingProcess.id,
             notes: `Thread dyeing process completed`,
+            updatedAt: new Date(),
         },
     });
 
@@ -196,7 +199,7 @@ async function validateInventoryConnections(
             where: { id: processId },
             include: {
                 threadPurchase: true,
-                inventoryEntries: true,
+                inventoryTransaction: true,
             },
         });
 
@@ -213,11 +216,13 @@ async function validateInventoryConnections(
         }
 
         // Check inventory entries consistency
-        if (process.inventoryEntries.length > 0) {
+        if (process.inventoryTransaction.length > 0) {
             // Get unique inventory IDs
             const inventoryIds = [
                 ...new Set(
-                    process.inventoryEntries.map((entry) => entry.inventoryId),
+                    process.inventoryTransaction.map(
+                        (entry) => entry.inventoryId,
+                    ),
                 ),
             ];
 
@@ -235,14 +240,14 @@ async function validateInventoryConnections(
             }
 
             // Check for balanced transactions (consumption and production)
-            const consumptionEntries = process.inventoryEntries.filter(
+            const consumptionEntries = process.inventoryTransaction.filter(
                 (entry) =>
                     entry.transactionType ===
                         InventoryTransactionType.ADJUSTMENT &&
                     entry.quantity < 0,
             );
 
-            const productionEntries = process.inventoryEntries.filter(
+            const productionEntries = process.inventoryTransaction.filter(
                 (entry) =>
                     entry.transactionType ===
                         InventoryTransactionType.PRODUCTION &&
@@ -422,12 +427,13 @@ export async function POST(request: NextRequest) {
         }
 
         // Get the thread information from inventory
-        const threadInventory = await db.inventory.findFirst({
+        let threadInventory = await db.inventory.findFirst({
             where: {
                 productType: ProductType.THREAD,
-                transactions: {
-                    some: {
-                        threadPurchaseId: body.threadPurchaseId,
+                threadType: {
+                    name: {
+                        equals: threadPurchase.threadType,
+                        mode: "insensitive",
                     },
                 },
             },
@@ -437,9 +443,71 @@ export async function POST(request: NextRequest) {
         });
 
         if (!threadInventory) {
+            // If thread not found in inventory, create it
+            let threadType = await db.threadType.findFirst({
+                where: {
+                    name: {
+                        equals: threadPurchase.threadType,
+                        mode: "insensitive",
+                    },
+                },
+            });
+
+            if (!threadType) {
+                // Create thread type if it doesn't exist
+                threadType = await db.threadType.create({
+                    data: {
+                        name: threadPurchase.threadType,
+                        units: threadPurchase.unitOfMeasure || "meters",
+                        updatedAt: new Date(),
+                    },
+                });
+            }
+
+            // Create new inventory item for the thread
+            threadInventory = await db.inventory.create({
+                data: {
+                    itemCode: `TH-${threadPurchase.id}-${Date.now().toString().slice(-6)}`,
+                    description: `${threadPurchase.threadType} Thread`,
+                    productType: ProductType.THREAD,
+                    threadTypeId: threadType.id,
+                    currentQuantity: threadPurchase.quantity,
+                    unitOfMeasure: threadPurchase.unitOfMeasure || "meters",
+                    minStockLevel: 100,
+                    costPerUnit: threadPurchase.unitPrice,
+                    salePrice: Number(threadPurchase.unitPrice) * 1.2, // 20% markup
+                    location: "Warehouse",
+                    notes: `Created from Thread Purchase #${threadPurchase.id}`,
+                    updatedAt: new Date(),
+                },
+                include: {
+                    threadType: true,
+                },
+            });
+
+            // Create initial inventory transaction
+            await db.inventoryTransaction.create({
+                data: {
+                    inventoryId: threadInventory.id,
+                    transactionType: InventoryTransactionType.PURCHASE,
+                    quantity: threadPurchase.quantity,
+                    remainingQuantity: threadPurchase.quantity,
+                    unitCost: threadPurchase.unitPrice,
+                    totalCost: threadPurchase.totalCost,
+                    referenceType: "ThreadPurchase",
+                    referenceId: threadPurchase.id,
+                    threadPurchaseId: threadPurchase.id,
+                    notes: `Initial stock from Thread Purchase #${threadPurchase.id}`,
+                    updatedAt: new Date(),
+                },
+            });
+        }
+
+        // At this point, threadInventory is guaranteed to be non-null
+        if (!threadInventory) {
             return NextResponse.json(
-                { error: "Thread not found in inventory" },
-                { status: 404 },
+                { error: "Failed to create or find thread inventory" },
+                { status: 500 },
             );
         }
 
@@ -557,12 +625,13 @@ export async function POST(request: NextRequest) {
                             inventoryId: threadInventory.id,
                             transactionType:
                                 InventoryTransactionType.ADJUSTMENT,
-                            quantity: -body.dyeQuantity, // Negative for consumption
+                            quantity: -body.dyeQuantity,
                             remainingQuantity: remainingQuantity,
                             referenceType: "DyeingProcess",
                             referenceId: newProcess.id,
                             dyeingProcessId: newProcess.id,
                             notes: `Thread used for dyeing process #${newProcess.id}`,
+                            updatedAt: new Date(),
                         },
                     });
 
@@ -615,8 +684,8 @@ export async function POST(request: NextRequest) {
             where: { id: newProcess.id },
             include: {
                 threadPurchase: true,
-                inventoryEntries: true,
-                fabricProductions: true,
+                inventoryTransaction: true,
+                fabricProduction: true,
             },
         });
 
@@ -634,17 +703,19 @@ export async function POST(request: NextRequest) {
 
         // Check if has inventory entries
         const hasInventoryEntries =
-            processWithInventory.inventoryEntries &&
-            processWithInventory.inventoryEntries.length > 0;
+            processWithInventory.inventoryTransaction &&
+            processWithInventory.inventoryTransaction.length > 0;
 
         // Check if has fabric productions
         const hasFabricProductions =
-            processWithInventory.fabricProductions &&
-            processWithInventory.fabricProductions.length > 0;
+            processWithInventory.fabricProduction &&
+            processWithInventory.fabricProduction.length > 0;
 
         // Get inventory status from the process
         const inventoryStatus =
-            processWithInventory.inventoryStatus || VALID_INVENTORY_STATUSES[0]; // Default to "PENDING"
+            processWithInventory.inventoryTransaction.length > 0
+                ? "UPDATED"
+                : "PENDING";
         const fabricProductionStatus = hasFabricProductions
             ? "USED"
             : "AVAILABLE";
@@ -653,16 +724,20 @@ export async function POST(request: NextRequest) {
         const transformedProcess = {
             id: processWithInventory.id,
             threadPurchaseId: processWithInventory.threadPurchaseId,
-            threadPurchase: {
-                id: processWithInventory.threadPurchase.id,
-                threadType: processWithInventory.threadPurchase.threadType,
-                colorStatus: processWithInventory.threadPurchase.colorStatus,
-                color: processWithInventory.threadPurchase.color,
-                quantity: processWithInventory.threadPurchase.quantity,
-                unitOfMeasure:
-                    processWithInventory.threadPurchase.unitOfMeasure ||
-                    "meters",
-            },
+            threadPurchase: processWithInventory.threadPurchase
+                ? {
+                      id: processWithInventory.threadPurchase.id,
+                      threadType:
+                          processWithInventory.threadPurchase.threadType,
+                      colorStatus:
+                          processWithInventory.threadPurchase.colorStatus,
+                      color: processWithInventory.threadPurchase.color,
+                      quantity: processWithInventory.threadPurchase.quantity,
+                      unitOfMeasure:
+                          processWithInventory.threadPurchase.unitOfMeasure ||
+                          "meters",
+                  }
+                : null,
             dyeDate: processWithInventory.dyeDate.toISOString(),
             dyeParameters: processWithInventory.dyeParameters,
             colorCode: processWithInventory.colorCode,
@@ -684,7 +759,7 @@ export async function POST(request: NextRequest) {
                 : null,
             remarks: processWithInventory.remarks || null,
             inventoryEntries: hasInventoryEntries
-                ? processWithInventory.inventoryEntries.map((entry) => ({
+                ? processWithInventory.inventoryTransaction.map((entry) => ({
                       id: entry.id,
                       quantity: entry.quantity,
                       transactionType: entry.transactionType,
@@ -696,7 +771,7 @@ export async function POST(request: NextRequest) {
                   }))
                 : [],
             fabricProductions: hasFabricProductions
-                ? processWithInventory.fabricProductions.map((prod) => ({
+                ? processWithInventory.fabricProduction.map((prod) => ({
                       id: prod.id,
                       fabricType: prod.fabricType,
                       status: prod.status,
@@ -835,7 +910,7 @@ export async function PATCH(request: NextRequest) {
             where: { id: Number(id) },
             include: {
                 threadPurchase: true,
-                inventoryEntries: true,
+                inventoryTransaction: true,
             },
         });
 
@@ -921,8 +996,8 @@ export async function PATCH(request: NextRequest) {
             data: updateData,
             include: {
                 threadPurchase: true,
-                inventoryEntries: true,
-                fabricProductions: true,
+                inventoryTransaction: true,
+                fabricProduction: true,
             },
         });
 
@@ -931,7 +1006,7 @@ export async function PATCH(request: NextRequest) {
             body.addToInventory &&
             body.resultStatus === "COMPLETED" &&
             existingProcess.resultStatus !== "COMPLETED" &&
-            existingProcess.inventoryEntries.length === 0
+            existingProcess.inventoryTransaction.length === 0
         ) {
             try {
                 // Use the centralized function to add dyed thread to inventory
@@ -966,8 +1041,8 @@ export async function PATCH(request: NextRequest) {
             where: { id: Number(id) },
             include: {
                 threadPurchase: true,
-                inventoryEntries: true,
-                fabricProductions: true,
+                inventoryTransaction: true,
+                fabricProduction: true,
             },
         });
 
@@ -987,15 +1062,17 @@ export async function PATCH(request: NextRequest) {
         const transformedProcess = {
             id: finalProcess.id,
             threadPurchaseId: finalProcess.threadPurchaseId,
-            threadPurchase: {
-                id: finalProcess.threadPurchase.id,
-                threadType: finalProcess.threadPurchase.threadType,
-                colorStatus: finalProcess.threadPurchase.colorStatus,
-                color: finalProcess.threadPurchase.color,
-                quantity: finalProcess.threadPurchase.quantity,
-                unitOfMeasure:
-                    finalProcess.threadPurchase.unitOfMeasure || "meters",
-            },
+            threadPurchase: finalProcess.threadPurchase
+                ? {
+                      id: finalProcess.threadPurchase.id,
+                      threadType: finalProcess.threadPurchase.threadType,
+                      colorStatus: finalProcess.threadPurchase.colorStatus,
+                      color: finalProcess.threadPurchase.color,
+                      quantity: finalProcess.threadPurchase.quantity,
+                      unitOfMeasure:
+                          finalProcess.threadPurchase.unitOfMeasure || "meters",
+                  }
+                : null,
             dyeDate: finalProcess.dyeDate.toISOString(),
             dyeParameters: finalProcess.dyeParameters,
             colorCode: finalProcess.colorCode,
@@ -1016,15 +1093,17 @@ export async function PATCH(request: NextRequest) {
                 ? finalProcess.completionDate.toISOString()
                 : null,
             remarks: finalProcess.remarks || null,
-            inventoryEntries: finalProcess.inventoryEntries.map((entry) => ({
-                id: entry.id,
-                quantity: entry.quantity,
-                transactionType: entry.transactionType,
-                transactionDate: entry.transactionDate.toISOString(),
-                unitCost: entry.unitCost ? Number(entry.unitCost) : null,
-                totalCost: entry.totalCost ? Number(entry.totalCost) : null,
-            })),
-            fabricProductions: finalProcess.fabricProductions.map((prod) => ({
+            inventoryEntries: finalProcess.inventoryTransaction.map(
+                (entry) => ({
+                    id: entry.id,
+                    quantity: entry.quantity,
+                    transactionType: entry.transactionType,
+                    transactionDate: entry.transactionDate.toISOString(),
+                    unitCost: entry.unitCost ? Number(entry.unitCost) : null,
+                    totalCost: entry.totalCost ? Number(entry.totalCost) : null,
+                }),
+            ),
+            fabricProductions: finalProcess.fabricProduction.map((prod) => ({
                 id: prod.id,
                 fabricType: prod.fabricType,
                 status: prod.status,
@@ -1037,13 +1116,11 @@ export async function PATCH(request: NextRequest) {
                 totalCost: Number(prod.totalCost),
             })),
             inventoryStatus:
-                finalProcess.inventoryEntries.length > 0
+                finalProcess.inventoryTransaction.length > 0
                     ? "UPDATED"
                     : "PENDING",
             fabricProductionStatus:
-                finalProcess.fabricProductions.length > 0
-                    ? "USED"
-                    : "AVAILABLE",
+                finalProcess.fabricProduction.length > 0 ? "USED" : "AVAILABLE",
         };
 
         return NextResponse.json({
@@ -1095,7 +1172,7 @@ export async function DELETE(request: NextRequest) {
         const process = await db.dyeingProcess.findUnique({
             where: { id: Number(processId) },
             include: {
-                fabricProductions: { take: 1 },
+                fabricProduction: { take: 1 },
             },
         });
 
@@ -1107,7 +1184,7 @@ export async function DELETE(request: NextRequest) {
         }
 
         // Check if it has related fabric productions
-        if (process.fabricProductions.length > 0) {
+        if (process.fabricProduction.length > 0) {
             return NextResponse.json(
                 {
                     error: "Cannot delete dyeing process that has related fabric productions",

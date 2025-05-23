@@ -433,17 +433,29 @@ function ThreadOrdersContent() {
             params.append("limit", "500"); // Higher limit to get all data
 
             // Primary endpoint with fallback logic
-            const response = await fetch(
-                `/api/thread-purchases?${params.toString()}`,
-            );
+            const response = await fetch(`/api/thread?${params.toString()}`, {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                cache: "no-store",
+            });
 
             if (!response.ok) {
+                const errorData = await response.json().catch(() => null);
                 throw new Error(
-                    `Failed to fetch thread purchases: ${response.statusText}`,
+                    errorData?.error ||
+                        `Failed to fetch thread purchases: ${response.status} ${response.statusText}`,
                 );
             }
 
-            const data = await response.json();
+            let data;
+            try {
+                data = await response.json();
+            } catch (error) {
+                console.error("Error parsing response:", error);
+                throw new Error("Invalid response format from server");
+            }
 
             // Process the data based on API response structure
             let threadPurchaseData: ThreadPurchaseAPIResponse[] = [];
@@ -742,20 +754,23 @@ function ThreadOrdersContent() {
     );
 
     return (
-        <div className="container space-y-6 py-8">
+        <div className="container space-y-4 p-4 py-4 sm:space-y-6 sm:py-8">
             {/* Header */}
-            <div className="flex flex-col justify-between gap-4 sm:flex-row">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <h1 className="text-3xl font-semibold tracking-tight">
+                    <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
                         Thread Orders
                     </h1>
-                    <p className="text-muted-foreground">
+                    <p className="text-muted-foreground text-sm sm:text-base">
                         Manage your thread purchases and inventory
                     </p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                    <Button onClick={handleCreateOrder} className="gap-1.5">
+                    <Button
+                        onClick={handleCreateOrder}
+                        className="w-full gap-1.5 sm:w-auto"
+                    >
                         <FilePlus className="h-4 w-4" />
                         New Order
                     </Button>
@@ -763,7 +778,7 @@ function ThreadOrdersContent() {
                     <Button
                         variant="outline"
                         onClick={handleExport}
-                        className="gap-1.5"
+                        className="w-full gap-1.5 sm:w-auto"
                         disabled={isExporting}
                     >
                         <FileDown className="h-4 w-4" />
@@ -773,7 +788,7 @@ function ThreadOrdersContent() {
                     <Button
                         variant="outline"
                         onClick={handleViewAnalytics}
-                        className="gap-1.5"
+                        className="w-full gap-1.5 sm:w-auto"
                     >
                         <PieChart className="h-4 w-4" />
                         Analytics
@@ -782,7 +797,7 @@ function ThreadOrdersContent() {
             </div>
 
             {/* Stats overview */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 <Card className="overflow-hidden border-none bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/30 dark:to-blue-900/20">
                     <CardHeader className="pb-2">
                         <CardTitle className="text-muted-foreground text-sm font-medium">
@@ -795,7 +810,7 @@ function ThreadOrdersContent() {
                         ) : (
                             <div className="flex items-center">
                                 <Package className="mr-2 h-5 w-5 text-blue-500" />
-                                <div className="text-2xl font-bold">
+                                <div className="text-xl font-bold sm:text-2xl">
                                     {orderStats.totalOrders}
                                 </div>
                             </div>
@@ -815,9 +830,9 @@ function ThreadOrdersContent() {
                         ) : (
                             <div className="flex items-center">
                                 <CheckCircle2 className="mr-2 h-5 w-5 text-emerald-500" />
-                                <div className="text-2xl font-bold">
+                                <div className="text-xl font-bold sm:text-2xl">
                                     {orderStats.receivedOrders}
-                                    <span className="text-muted-foreground ml-2 text-sm">
+                                    <span className="text-muted-foreground ml-2 text-xs sm:text-sm">
                                         (
                                         {Math.round(
                                             (orderStats.receivedOrders /
@@ -844,9 +859,9 @@ function ThreadOrdersContent() {
                         ) : (
                             <div className="flex items-center">
                                 <Clock className="mr-2 h-5 w-5 text-amber-500" />
-                                <div className="text-2xl font-bold">
+                                <div className="text-xl font-bold sm:text-2xl">
                                     {orderStats.pendingOrders}
-                                    <span className="text-muted-foreground ml-2 text-sm">
+                                    <span className="text-muted-foreground ml-2 text-xs sm:text-sm">
                                         (
                                         {Math.round(
                                             (orderStats.pendingOrders /
@@ -873,7 +888,7 @@ function ThreadOrdersContent() {
                         ) : (
                             <div className="flex items-center">
                                 <Coins className="mr-2 h-5 w-5 text-violet-500" />
-                                <div className="text-2xl font-bold">
+                                <div className="text-xl font-bold sm:text-2xl">
                                     {formatCurrency(orderStats.totalValue)}
                                 </div>
                             </div>
@@ -893,9 +908,9 @@ function ThreadOrdersContent() {
                         ) : (
                             <div className="flex items-center">
                                 <ShoppingCart className="mr-2 h-5 w-5 text-cyan-500" />
-                                <div className="text-2xl font-bold">
+                                <div className="text-xl font-bold sm:text-2xl">
                                     {orderStats.inInventory}
-                                    <span className="text-muted-foreground ml-2 text-sm">
+                                    <span className="text-muted-foreground ml-2 text-xs sm:text-sm">
                                         (
                                         {Math.round(
                                             (orderStats.inInventory /
@@ -922,9 +937,9 @@ function ThreadOrdersContent() {
                         ) : (
                             <div className="flex items-center">
                                 <Palette className="mr-2 h-5 w-5 text-fuchsia-500" />
-                                <div className="text-2xl font-bold">
+                                <div className="text-xl font-bold sm:text-2xl">
                                     {orderStats.dyedItems}
-                                    <span className="text-muted-foreground ml-2 text-sm">
+                                    <span className="text-muted-foreground ml-2 text-xs sm:text-sm">
                                         (
                                         {Math.round(
                                             (orderStats.dyedItems /
@@ -946,12 +961,12 @@ function ThreadOrdersContent() {
                     role="tablist"
                     className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
                 >
-                    <div className="bg-muted/60 rounded-md p-1">
+                    <div className="bg-muted/60 w-full rounded-md p-1 sm:w-auto">
                         <button
                             role="tab"
                             aria-selected={activeTab === "all"}
                             onClick={() => handleTabChange("all")}
-                            className={`rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${
+                            className={`w-full rounded-sm px-3 py-1.5 text-sm font-medium transition-all sm:w-auto ${
                                 activeTab === "all"
                                     ? "bg-background shadow-sm"
                                     : "text-muted-foreground"
@@ -963,7 +978,7 @@ function ThreadOrdersContent() {
                             role="tab"
                             aria-selected={activeTab === "pending"}
                             onClick={() => handleTabChange("pending")}
-                            className={`rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${
+                            className={`w-full rounded-sm px-3 py-1.5 text-sm font-medium transition-all sm:w-auto ${
                                 activeTab === "pending"
                                     ? "bg-background shadow-sm"
                                     : "text-muted-foreground"
@@ -975,7 +990,7 @@ function ThreadOrdersContent() {
                             role="tab"
                             aria-selected={activeTab === "received"}
                             onClick={() => handleTabChange("received")}
-                            className={`rounded-sm px-3 py-1.5 text-sm font-medium transition-all ${
+                            className={`w-full rounded-sm px-3 py-1.5 text-sm font-medium transition-all sm:w-auto ${
                                 activeTab === "received"
                                     ? "bg-background shadow-sm"
                                     : "text-muted-foreground"
@@ -994,7 +1009,7 @@ function ThreadOrdersContent() {
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    className="gap-1.5"
+                                    className="w-full gap-1.5 sm:w-auto"
                                 >
                                     <Filter className="h-4 w-4" />
                                     Filter
@@ -1175,7 +1190,7 @@ function ThreadOrdersContent() {
                             </SheetContent>
                         </Sheet>
 
-                        <div className="relative">
+                        <div className="relative w-full sm:w-auto">
                             <Search className="text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4" />
                             <Input
                                 type="search"
@@ -1187,7 +1202,7 @@ function ThreadOrdersContent() {
                                         searchQuery: e.target.value,
                                     })
                                 }
-                                className="w-[200px] pl-8 md:w-[250px]"
+                                className="w-full pl-8 sm:w-[250px]"
                             />
                         </div>
                     </div>

@@ -75,9 +75,7 @@ export async function GET(request: Request) {
         // Fetch fabric productions with related data
         const [fabricProductions, totalCount] = await Promise.all([
             db.fabricProduction.findMany({
-                where: {
-                    status: "COMPLETED",
-                },
+                where: where,
                 include: {
                     threadPurchase: {
                         include: {
@@ -103,6 +101,8 @@ export async function GET(request: Request) {
                 orderBy: {
                     productionDate: "desc",
                 },
+                skip: (page - 1) * limit,
+                take: limit,
             }),
             db.fabricProduction.count({ where }),
         ]);

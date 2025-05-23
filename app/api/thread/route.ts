@@ -11,59 +11,10 @@ import {
 
 import { db } from "@/lib/db";
 
-// Define interface for inventory data
-interface InventoryData {
-    inventoryId: number;
-    currentQuantity: number;
-    itemCode: string;
-    location: string;
-    description: string;
-    productType: ProductType;
-    threadTypeId?: number | null;
-    threadTypeName?: string | null;
-    unitOfMeasure: string;
-    costPerUnit: number;
-    salePrice: number;
-    lastRestocked: string | null;
-}
-
-// Define interface for formatted thread purchase
-interface FormattedThreadPurchase {
-    id: number;
-    vendorId: number;
-    vendorName: string;
-    orderDate: string;
-    threadType: string;
-    color: string | null;
-    colorStatus: ColorStatus;
-    quantity: number;
-    unitPrice: number;
-    totalCost: number;
-    unitOfMeasure: string;
-    deliveryDate: string | null;
-    received: boolean;
-    receivedAt: string | null;
-    hasDyeingProcess: boolean;
-    dyeingProcessId: number | null;
-    dyeingStatus: string | null;
-    dyedColor: string | null;
-    dyeingCompleted: boolean;
-    inventory: InventoryData | null;
-}
-
 // GET handler to fetch all thread purchases with pagination, filtering, and sorting
 export async function GET(req: NextRequest) {
     try {
         const { searchParams } = new URL(req.url);
-
-        // Check if we should fetch directly from inventory instead of thread purchases
-        const fetchFromInventory =
-            searchParams.get("fetchFromInventory") === "true";
-
-        if (fetchFromInventory) {
-            // Directly fetch thread inventory
-            return await _getThreadsFromInventory(searchParams);
-        }
 
         // Filtering parameters
         const colorStatus = searchParams.get("colorStatus");
@@ -71,17 +22,13 @@ export async function GET(req: NextRequest) {
         const vendorId = searchParams.get("vendorId");
         const search = searchParams.get("search");
         const page = parseInt(searchParams.get("page") || "1");
-        const limit = parseInt(searchParams.get("limit") || "1000"); // Increased default limit
+        const limit = parseInt(searchParams.get("limit") || "1000");
         const skip = (page - 1) * limit;
-        const includeInventory =
-            searchParams.get("includeInventory") === "true";
-        // Set includeAll to true by default to include all threads regardless of status
-        // const includeAll = searchParams.get("includeAll") !== "false";
 
         // Build the where clause
         const where: Prisma.ThreadPurchaseWhereInput = {};
 
-        // Only apply colorStatus filter if explicity specified
+        // Only apply colorStatus filter if explicitly specified
         if (colorStatus) {
             where.colorStatus = colorStatus as ColorStatus;
         }
@@ -103,9 +50,7 @@ export async function GET(req: NextRequest) {
             ];
         }
 
-        console.log("Thread query where clause:", JSON.stringify(where));
-
-        // Fetch thread purchases
+        // Fetch thread purchases with proper error handling
         const [threadPurchases, totalCount] = await Promise.all([
             db.threadPurchase.findMany({
                 where,
@@ -128,196 +73,66 @@ export async function GET(req: NextRequest) {
                             dyeDate: "desc",
                         },
                     },
-                } as Prisma.ThreadPurchaseInclude & {
-                    dyeingProcess?: {
-                        select: {
-                            id: boolean;
-                            resultStatus: boolean;
-                            colorName: boolean;
-                            colorCode: boolean;
-                            completionDate: boolean;
-                        };
-                        orderBy: {
-                            dyeDate: string;
-                        };
-                    };
                 },
             }),
             db.threadPurchase.count({ where }),
-        ]);
-
-        console.log(`Found ${threadPurchases.length} thread purchases`);
+        ]).catch((error) => {
+            console.error("Database error:", error);
+            throw new Error("Failed to fetch thread purchases from database");
+        });
 
         // Prepare formatted thread purchases
-        let formattedThreadPurchases: FormattedThreadPurchase[] =
-            threadPurchases.map((purchase: any) => {
-                // Get the most recent dyeing process if any
-                const dyeingProcess =
-                    purchase.dyeingProcess && purchase.dyeingProcess.length > 0
-                        ? purchase.dyeingProcess[0]
-                        : null;
+        const formattedThreadPurchases = threadPurchases.map((purchase) => {
+            const dyeingProcess =
+                purchase.dyeingProcess && purchase.dyeingProcess.length > 0
+                    ? purchase.dyeingProcess[0]
+                    : null;
 
-                const formatted = {
-                    id: purchase.id,
-                    vendorId: purchase.vendorId,
-                    vendorName: purchase.vendor?.name || "Unknown",
-                    orderDate: purchase.orderDate.toISOString(),
-                    threadType: purchase.threadType,
-                    color: purchase.color,
-                    colorStatus: purchase.colorStatus,
-                    quantity: purchase.quantity,
-                    unitPrice: Number(purchase.unitPrice),
-                    totalCost: Number(purchase.totalCost),
-                    unitOfMeasure: purchase.unitOfMeasure,
-                    deliveryDate: purchase.deliveryDate?.toISOString() || null,
-                    received: purchase.received,
-                    receivedAt: purchase.receivedAt?.toISOString() || null,
-                    hasDyeingProcess: dyeingProcess !== null,
-                    dyeingProcessId: dyeingProcess?.id || null,
-                    dyeingStatus: dyeingProcess?.resultStatus || null,
-                    dyedColor:
-                        dyeingProcess?.colorName ||
-                        dyeingProcess?.colorCode ||
-                        null,
-                    dyeingCompleted: dyeingProcess?.completionDate
-                        ? true
-                        : false,
-                    inventory: null, // Default inventory data
-                };
+            return {
+                id: purchase.id,
+                vendorId: purchase.vendorId,
+                vendorName: purchase.vendor?.name || "Unknown",
+                orderDate: purchase.orderDate.toISOString(),
+                threadType: purchase.threadType,
+                color: purchase.color,
+                colorStatus: purchase.colorStatus,
+                quantity: purchase.quantity,
+                unitPrice: Number(purchase.unitPrice),
+                totalCost: Number(purchase.totalCost),
+                unitOfMeasure: purchase.unitOfMeasure,
+                deliveryDate: purchase.deliveryDate?.toISOString() || null,
+                received: purchase.received,
+                receivedAt: purchase.receivedAt?.toISOString() || null,
+                hasDyeingProcess: dyeingProcess !== null,
+                dyeingProcessId: dyeingProcess?.id || null,
+                dyeingStatus: dyeingProcess?.resultStatus || null,
+                dyedColor:
+                    dyeingProcess?.colorName ||
+                    dyeingProcess?.colorCode ||
+                    null,
+                dyeingCompleted: Boolean(dyeingProcess?.completionDate),
+                inventory: null,
+            };
+        });
 
-                return formatted;
-            });
-
-        console.log(
-            `Formatted ${formattedThreadPurchases.length} thread purchases`,
-        );
-
-        // If inventory data is requested, fetch and add it separately
-        if (includeInventory) {
-            const purchaseIds = threadPurchases.map((p) => p.id);
-
-            console.log(
-                `Fetching inventory for ${purchaseIds.length} thread purchases`,
-            );
-
-            try {
-                // Fetch inventory data for these thread purchases
-                const inventoryTransactions =
-                    await db.inventoryTransaction.findMany({
-                        where: {
-                            threadPurchaseId: {
-                                in: purchaseIds,
-                            },
-                        },
-                        include: {
-                            inventory: {
-                                include: {
-                                    threadType: true,
-                                },
-                            },
-                        },
-                        orderBy: {
-                            createdAt: "desc",
-                        },
-                    });
-
-                console.log(
-                    `Found ${inventoryTransactions.length} inventory transactions`,
-                );
-
-                // Group inventory transactions by thread purchase ID
-                const inventoryByThreadId: Record<
-                    number,
-                    typeof inventoryTransactions
-                > = {};
-
-                for (const transaction of inventoryTransactions) {
-                    if (transaction.threadPurchaseId) {
-                        if (
-                            !inventoryByThreadId[transaction.threadPurchaseId]
-                        ) {
-                            inventoryByThreadId[transaction.threadPurchaseId] =
-                                [];
-                        }
-                        inventoryByThreadId[transaction.threadPurchaseId].push(
-                            transaction,
-                        );
-                    }
-                }
-
-                const threadIdsWithInventory =
-                    Object.keys(inventoryByThreadId).map(Number);
-                console.log(
-                    `Found inventory for ${threadIdsWithInventory.length} threads`,
-                );
-
-                // Update formatted thread purchases with inventory data
-                formattedThreadPurchases = formattedThreadPurchases.map(
-                    (thread) => {
-                        const transactions = inventoryByThreadId[thread.id];
-                        if (transactions && transactions.length > 0) {
-                            const latestTransaction = transactions[0];
-                            return {
-                                ...thread,
-                                inventory: {
-                                    inventoryId: latestTransaction.inventory.id,
-                                    currentQuantity:
-                                        latestTransaction.inventory
-                                            .currentQuantity,
-                                    itemCode:
-                                        latestTransaction.inventory.itemCode,
-                                    location:
-                                        latestTransaction.inventory.location ||
-                                        "Unknown",
-                                    description:
-                                        latestTransaction.inventory
-                                            .description || "",
-                                    productType:
-                                        latestTransaction.inventory.productType,
-                                    threadTypeId:
-                                        latestTransaction.inventory
-                                            .threadTypeId,
-                                    threadTypeName:
-                                        latestTransaction.inventory.threadType
-                                            ?.name,
-                                    unitOfMeasure:
-                                        latestTransaction.inventory
-                                            .unitOfMeasure,
-                                    costPerUnit: Number(
-                                        latestTransaction.inventory.costPerUnit,
-                                    ),
-                                    salePrice: Number(
-                                        latestTransaction.inventory.salePrice,
-                                    ),
-                                    lastRestocked:
-                                        latestTransaction.inventory.lastRestocked?.toISOString() ||
-                                        null,
-                                },
-                            };
-                        }
-                        return thread;
-                    },
-                );
-            } catch (error) {
-                console.error("Error fetching inventory data:", error);
-                // Continue with the response even if inventory fetch fails
-            }
-        }
-
+        // Return the response with proper structure
         return NextResponse.json({
             success: true,
             data: formattedThreadPurchases,
-            meta: {
-                total: totalCount,
-                page,
-                limit,
-                pages: Math.ceil(totalCount / limit),
-            },
+            total: totalCount,
+            page,
+            limit,
         });
     } catch (error) {
-        console.error("Error fetching thread purchases:", error);
+        console.error("Error in thread GET handler:", error);
         return NextResponse.json(
-            { error: "Failed to fetch thread purchases" },
+            {
+                success: false,
+                error:
+                    error instanceof Error
+                        ? error.message
+                        : "An unexpected error occurred",
+            },
             { status: 500 },
         );
     }
@@ -648,90 +463,6 @@ export async function PATCH(req: NextRequest) {
 
         return NextResponse.json(
             { error: "Failed to update thread purchase" },
-            { status: 500 },
-        );
-    }
-}
-
-// Helper function to get threads directly from inventory
-async function _getThreadsFromInventory(searchParams: URLSearchParams) {
-    try {
-        const search = searchParams.get("search");
-        const page = parseInt(searchParams.get("page") || "1");
-        const limit = parseInt(searchParams.get("limit") || "100");
-        const skip = (page - 1) * limit;
-
-        // Build where clause for inventory
-        const where: Prisma.InventoryWhereInput = {
-            productType: ProductType.THREAD,
-        };
-
-        if (search) {
-            where.OR = [
-                { itemCode: { contains: search, mode: "insensitive" } },
-                { description: { contains: search, mode: "insensitive" } },
-                {
-                    threadType: {
-                        name: { contains: search, mode: "insensitive" },
-                    },
-                },
-            ];
-        }
-
-        console.log(
-            "Fetching inventory with where clause:",
-            JSON.stringify(where),
-        );
-
-        // Fetch inventory items of type THREAD
-        const [inventoryItems, totalCount] = await Promise.all([
-            db.inventory.findMany({
-                where,
-                skip,
-                take: limit,
-                orderBy: {
-                    lastRestocked: "desc",
-                },
-                include: {
-                    threadType: true,
-                },
-            }),
-            db.inventory.count({ where }),
-        ]);
-
-        console.log(`Found ${inventoryItems.length} inventory items`);
-
-        // Format inventory items
-        const formattedItems = inventoryItems.map((item) => ({
-            inventoryId: item.id,
-            itemCode: item.itemCode,
-            description: item.description || "",
-            threadTypeId: item.threadTypeId,
-            threadTypeName: item.threadType?.name || "Unknown",
-            currentQuantity: item.currentQuantity,
-            unitOfMeasure: item.unitOfMeasure,
-            location: item.location || "Unknown",
-            costPerUnit: Number(item.costPerUnit),
-            salePrice: Number(item.salePrice),
-            productType: item.productType,
-            lastRestocked: item.lastRestocked?.toISOString() || null,
-            minStockLevel: item.minStockLevel,
-        }));
-
-        return NextResponse.json({
-            success: true,
-            data: formattedItems,
-            meta: {
-                total: totalCount,
-                page,
-                limit,
-                pages: Math.ceil(totalCount / limit),
-            },
-        });
-    } catch (error) {
-        console.error("Error fetching threads from inventory:", error);
-        return NextResponse.json(
-            { error: "Failed to fetch threads from inventory" },
             { status: 500 },
         );
     }

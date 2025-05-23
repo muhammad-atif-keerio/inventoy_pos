@@ -229,7 +229,7 @@ export async function PATCH(
     { params }: { params: Promise<{ id: string }> },
 ) {
     try {
-        const { id } = await  params;
+        const { id } = await params;
         const data = await request.json();
 
         // If it's a composite ID (type:id), extract the parts

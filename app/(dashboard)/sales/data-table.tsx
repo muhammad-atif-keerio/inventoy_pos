@@ -100,76 +100,32 @@ export function SalesDataTable<TData, TValue>({
             );
 
             // Make API request with filters
-            const response = await fetch(`/api/sales?${params.toString()}`);
+            const response = await fetch(`/api/sales?${params.toString()}`, {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                cache: "no-store",
+            });
 
             if (!response.ok) {
                 const errorText = await response.text();
-
-                try {
-                    // Check if the response is HTML (indicating a server error page)
-                    if (
-                        errorText.includes("<!DOCTYPE html>") ||
-                        errorText.includes("<html>")
-                    ) {
-                        console.error(
-                            "Server returned HTML instead of JSON:",
-                            errorText.substring(0, 200) + "...",
-                        );
-                        throw new Error(
-                            "Server error: The server returned an HTML error page",
-                        );
-                    } else {
-                        // Try to parse as JSON
-                        const errorData = JSON.parse(errorText);
-                        const errorMessage =
-                            errorData.error || "Failed to fetch sales data";
-                        throw new Error(errorMessage);
-                    }
-                } catch (parseError) {
-                    console.error("Error parsing server response:", parseError);
-                    throw new Error(
-                        "Failed to fetch sales data: " +
-                            errorText.substring(0, 100),
-                    );
-                }
+                throw new Error(
+                    `Failed to fetch sales data: ${response.statusText}${errorText ? ` - ${errorText}` : ""}`,
+                );
             }
 
-            // Safely parse the JSON response
-            let responseData;
-            try {
-                const responseText = await response.text();
+            const responseData = await response.json();
 
-                // Check if the response is HTML
-                if (
-                    responseText.includes("<!DOCTYPE html>") ||
-                    responseText.includes("<html>")
-                ) {
-                    console.error(
-                        "Server returned HTML instead of JSON:",
-                        responseText.substring(0, 200) + "...",
-                    );
-                    throw new Error(
-                        "Server returned HTML instead of JSON data",
-                    );
-                }
-
-                responseData = JSON.parse(responseText);
-            } catch (parseError) {
-                console.error("Error parsing JSON response:", parseError);
-                throw new Error("Failed to parse server response");
+            if (!responseData.success) {
+                throw new Error(
+                    responseData.error || "Failed to fetch sales data",
+                );
             }
 
-            // If the response is paginated with items and total
-            if (responseData.items && typeof responseData.total === "number") {
-                setData(responseData.items);
-                setTotalCount(responseData.total);
-            } else {
-                // If the response is a direct array
-                setData(responseData);
-                setTotalCount(responseData.length);
-            }
-
-            // Clear any previous errors
+            // Update state with the new data
+            setData(responseData.data.items);
+            setTotalCount(responseData.data.total);
             setError(null);
         } catch (error) {
             console.error("Error fetching sales data:", error);

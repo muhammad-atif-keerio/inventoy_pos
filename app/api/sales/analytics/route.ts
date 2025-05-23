@@ -1,13 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable no-unused-vars */
 import { NextRequest, NextResponse } from "next/server";
 
-import {
-    ChequeTransaction,
-    PaymentMode,
-    PaymentStatus,
-    Prisma,
-    ProductType,
-    SalesOrder,
-} from "@prisma/client";
+import { PaymentMode, PaymentStatus, ProductType } from "@prisma/client";
 import {
     endOfMonth,
     format,
@@ -18,38 +13,6 @@ import {
 } from "date-fns";
 
 import { db } from "@/lib/db";
-
-// Define specific types for item properties that may vary
-interface ThreadPurchaseDetails {
-    id: number;
-    threadType: string;
-    color: string | null;
-    colorStatus: string;
-}
-
-interface FabricProductionDetails {
-    id: number;
-    fabricType: string;
-    dimensions?: string;
-    batchNumber?: string;
-}
-
-// Define extended type for orders with relations
-type SalesOrderWithRelations = SalesOrder & {
-    items: Array<{
-        productType: ProductType;
-        subtotal: Prisma.Decimal;
-        threadPurchase?: ThreadPurchaseDetails | null;
-        fabricProduction?: FabricProductionDetails | null;
-    }>;
-    payments: Array<{
-        mode: PaymentMode;
-        amount: Prisma.Decimal;
-        chequeTransaction?: ChequeTransaction | null;
-        referenceNumber?: string | null;
-        description: string;
-    }>;
-};
 
 export async function GET(request: NextRequest) {
     try {
@@ -74,8 +37,8 @@ export async function GET(request: NextRequest) {
                 startDate = subDays(endDate, 30);
         }
 
-        // Fetch sales data from the database within the date range - use type assertion for our extended type
-        const salesOrders = (await db.salesOrder.findMany({
+        // Fetch sales data from the database within the date range
+        const salesOrders = await db.salesOrder.findMany({
             where: {
                 orderDate: {
                     gte: startDate,
@@ -83,7 +46,32 @@ export async function GET(request: NextRequest) {
                 },
             },
             include: {
-                items: true,
+                customer: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
+                },
+                items: {
+                    include: {
+                        threadPurchase: {
+                            select: {
+                                id: true,
+                                threadType: true,
+                                color: true,
+                                colorStatus: true,
+                            },
+                        },
+                        fabricProduction: {
+                            select: {
+                                id: true,
+                                fabricType: true,
+                                dimensions: true,
+                                batchNumber: true,
+                            },
+                        },
+                    },
+                },
                 payments: {
                     include: {
                         chequeTransaction: true,
@@ -93,11 +81,11 @@ export async function GET(request: NextRequest) {
             orderBy: {
                 orderDate: "asc",
             },
-        })) as unknown as SalesOrderWithRelations[];
+        });
 
         // Calculate total revenue
         const totalRevenue = salesOrders.reduce(
-            (sum, sale) => sum + sale.totalSale.toNumber(),
+            (sum, sale) => sum + Number(sale.totalSale),
             0,
         );
 
@@ -119,7 +107,6 @@ export async function GET(request: NextRequest) {
         });
 
         const paymentDistribution = Object.entries(paymentCounts)
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars, no-unused-vars
             .filter(([_, count]) => count > 0)
             .map(([mode, count]) => ({
                 mode,
@@ -132,16 +119,14 @@ export async function GET(request: NextRequest) {
             [ProductType.FABRIC]: 0,
         };
 
-        // Process each sale's items instead of direct productType on SalesOrder
         salesOrders.forEach((sale) => {
-            if (sale.items && Array.isArray(sale.items)) {
-                sale.items.forEach((item) => {
-                    if (item.productType in productTotals) {
-                        productTotals[item.productType as ProductType] +=
-                            item.subtotal.toNumber();
-                    }
-                });
-            }
+            sale.items.forEach((item) => {
+                if (item.productType in productTotals) {
+                    productTotals[item.productType as ProductType] += Number(
+                        item.subtotal,
+                    );
+                }
+            });
         });
 
         const totalSales = Object.values(productTotals).reduce(
@@ -150,7 +135,6 @@ export async function GET(request: NextRequest) {
         );
 
         const productDistribution = Object.entries(productTotals)
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars, no-unused-vars
             .filter(([_, value]) => value > 0)
             .map(([type, value]) => ({
                 type,
@@ -166,9 +150,7 @@ export async function GET(request: NextRequest) {
             for (let i = 6; i >= 0; i--) {
                 const day = subDays(endDate, i);
                 const dayStart = new Date(day.setHours(0, 0, 0, 0));
-                const dayEnd = new Date(
-                    new Date(day).setHours(23, 59, 59, 999),
-                );
+                const dayEnd = new Date(day.setHours(23, 59, 59, 999));
 
                 const daySales = salesOrders.filter(
                     (sale) =>
@@ -176,7 +158,7 @@ export async function GET(request: NextRequest) {
                 );
 
                 const totalDaySales = daySales.reduce(
-                    (sum, sale) => sum + sale.totalSale.toNumber(),
+                    (sum, sale) => sum + Number(sale.totalSale),
                     0,
                 );
 
@@ -198,7 +180,7 @@ export async function GET(request: NextRequest) {
                 );
 
                 const totalWeekSales = weekSales.reduce(
-                    (sum, sale) => sum + sale.totalSale.toNumber(),
+                    (sum, sale) => sum + Number(sale.totalSale),
                     0,
                 );
 
@@ -207,12 +189,11 @@ export async function GET(request: NextRequest) {
                     value: totalWeekSales,
                 });
             }
-        } else if (timeRange === "1year") {
+        } else {
             // For 1 year, show months
             for (let i = 11; i >= 0; i--) {
-                const monthDate = subMonths(endDate, i);
-                const monthStart = startOfMonth(monthDate);
-                const monthEnd = endOfMonth(monthDate);
+                const monthEnd = endOfMonth(subMonths(endDate, i));
+                const monthStart = startOfMonth(subMonths(endDate, i));
 
                 const monthSales = salesOrders.filter(
                     (sale) =>
@@ -221,19 +202,19 @@ export async function GET(request: NextRequest) {
                 );
 
                 const totalMonthSales = monthSales.reduce(
-                    (sum, sale) => sum + sale.totalSale.toNumber(),
+                    (sum, sale) => sum + Number(sale.totalSale),
                     0,
                 );
 
                 salesByTimeframe.push({
-                    label: format(monthDate, "MMM"),
+                    label: format(monthStart, "MMM"),
                     value: totalMonthSales,
                 });
             }
         }
 
-        // Recent payment statuses
-        const paymentStatuses = {
+        // Calculate payment status distribution
+        const statusCounts = {
             [PaymentStatus.PAID]: 0,
             [PaymentStatus.PARTIAL]: 0,
             [PaymentStatus.PENDING]: 0,
@@ -241,66 +222,65 @@ export async function GET(request: NextRequest) {
         };
 
         salesOrders.forEach((sale) => {
-            paymentStatuses[sale.paymentStatus]++;
+            statusCounts[sale.paymentStatus]++;
         });
 
-        const paymentStatusDistribution = Object.entries(paymentStatuses)
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars, no-unused-vars
+        const paymentStatusDistribution = Object.entries(statusCounts)
             .filter(([_, count]) => count > 0)
             .map(([status, count]) => ({
                 status,
                 count,
             }));
 
-        // Top customers
-        const customerSales: Record<
-            number,
-            { name: string; total: number; count: number }
-        > = {};
+        // Calculate top customers
+        const customerTotals = new Map<
+            string,
+            { total: number; count: number }
+        >();
 
-        for (const sale of salesOrders) {
-            const customerId = sale.customerId;
-            if (!customerSales[customerId]) {
-                const customer = await db.customer.findUnique({
-                    where: { id: customerId },
-                    select: { name: true },
-                });
+        salesOrders.forEach((sale) => {
+            const customerName = sale.customer?.name || "Unknown Customer";
+            const current = customerTotals.get(customerName) || {
+                total: 0,
+                count: 0,
+            };
+            customerTotals.set(customerName, {
+                total: current.total + Number(sale.totalSale),
+                count: current.count + 1,
+            });
+        });
 
-                customerSales[customerId] = {
-                    name: customer?.name || `Customer #${customerId}`,
-                    total: 0,
-                    count: 0,
-                };
-            }
-
-            customerSales[customerId].total += sale.totalSale.toNumber();
-            customerSales[customerId].count += 1;
-        }
-
-        const topCustomers = Object.values(customerSales)
+        const topCustomers = Array.from(customerTotals.entries())
+            .map(([name, data]) => ({
+                name,
+                total: data.total,
+                count: data.count,
+            }))
             .sort((a, b) => b.total - a.total)
-            .slice(0, 5)
-            .map((customer) => ({
-                name: customer.name,
-                total: customer.total,
-                count: customer.count,
-            }));
+            .slice(0, 5);
 
+        // Return the formatted response
         return NextResponse.json({
-            totalRevenue,
-            averageOrderSize,
-            salesByTimeframe,
-            paymentDistribution,
-            productDistribution,
-            paymentStatusDistribution,
-            topCustomers,
+            success: true,
+            data: {
+                totalRevenue,
+                averageOrderSize,
+                salesByTimeframe,
+                paymentDistribution,
+                productDistribution,
+                paymentStatusDistribution,
+                topCustomers,
+            },
         });
     } catch (error) {
-        console.error("Error generating analytics:", error);
+        console.error("Error fetching sales analytics:", error);
         return NextResponse.json(
             {
-                error: "Failed to generate analytics",
-                details: error instanceof Error ? error.message : String(error),
+                success: false,
+                error:
+                    error instanceof Error
+                        ? error.message
+                        : "Failed to fetch sales analytics",
             },
             { status: 500 },
         );

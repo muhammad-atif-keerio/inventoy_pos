@@ -45,6 +45,19 @@ import { Separator } from "@/components/ui/separator";
 
 import { ThreadPurchase } from "../columns";
 
+// Add this helper function at the top level
+const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString) return "Not set";
+    try {
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return "Invalid date";
+        return format(date, "PPP");
+    } catch (error) {
+        console.error("Error formatting date:", error);
+        return "Invalid date";
+    }
+};
+
 export default function ThreadOrderDetailsPage() {
     const params = useParams();
     const router = useRouter();
@@ -64,21 +77,11 @@ export default function ThreadOrderDetailsPage() {
             setError(null);
 
             try {
-                // Safely encode the ID parameter for the URL
                 const encodedId = encodeURIComponent(id);
-                console.log(
-                    `Fetching thread order with ID: ${id} (encoded: ${encodedId})`,
-                );
-
                 const response = await fetch(`/api/thread/${encodedId}`, {
                     signal: controller.signal,
                 });
 
-                console.log(
-                    `Response status: ${response.status} ${response.statusText}`,
-                );
-
-                // Handle 404 error specifically
                 if (response.status === 404) {
                     setError(
                         "Thread order not found. It may have been deleted.",
@@ -103,22 +106,33 @@ export default function ThreadOrderDetailsPage() {
                 const data = await response.json();
                 console.log("Successfully fetched order data:", data);
 
-                // Ensure numeric values are properly parsed
+                // Ensure we have the data property
+                const orderData = data.data || data;
+
+                // Ensure numeric values are properly parsed and dates are valid
                 const normalizedData = {
-                    ...data,
+                    ...orderData,
                     unitPrice:
-                        typeof data.unitPrice === "string"
-                            ? Number(data.unitPrice)
-                            : data.unitPrice,
+                        typeof orderData.unitPrice === "string"
+                            ? Number(orderData.unitPrice)
+                            : orderData.unitPrice,
                     totalCost:
-                        typeof data.totalCost === "string"
-                            ? Number(data.totalCost)
-                            : data.totalCost,
+                        typeof orderData.totalCost === "string"
+                            ? Number(orderData.totalCost)
+                            : orderData.totalCost,
+                    orderDate: orderData.orderDate
+                        ? new Date(orderData.orderDate).toISOString()
+                        : null,
+                    deliveryDate: orderData.deliveryDate
+                        ? new Date(orderData.deliveryDate).toISOString()
+                        : null,
+                    receivedAt: orderData.receivedAt
+                        ? new Date(orderData.receivedAt).toISOString()
+                        : null,
                 };
 
                 setOrder(normalizedData);
             } catch (err) {
-                // Don't show error for aborted requests
                 if (err instanceof Error && err.name === "AbortError") {
                     console.log("Fetch aborted");
                     return;
@@ -139,7 +153,6 @@ export default function ThreadOrderDetailsPage() {
 
         fetchOrder();
 
-        // Cleanup function to abort fetch request when component unmounts
         return () => {
             controller.abort();
         };
@@ -574,11 +587,8 @@ export default function ThreadOrderDetailsPage() {
                                                     Order Date
                                                 </p>
                                                 <p className="text-muted-foreground text-sm">
-                                                    {format(
-                                                        new Date(
-                                                            order.orderDate,
-                                                        ),
-                                                        "PPP",
+                                                    {formatDate(
+                                                        order.orderDate,
                                                     )}
                                                 </p>
                                             </div>
@@ -591,14 +601,9 @@ export default function ThreadOrderDetailsPage() {
                                                     Delivery Date
                                                 </p>
                                                 <p className="text-muted-foreground text-sm">
-                                                    {order.deliveryDate
-                                                        ? format(
-                                                              new Date(
-                                                                  order.deliveryDate,
-                                                              ),
-                                                              "PPP",
-                                                          )
-                                                        : "Not specified"}
+                                                    {formatDate(
+                                                        order.deliveryDate,
+                                                    )}
                                                 </p>
                                             </div>
                                         </div>
@@ -612,14 +617,9 @@ export default function ThreadOrderDetailsPage() {
                                                         Received On
                                                     </p>
                                                     <p className="text-muted-foreground text-sm">
-                                                        {order.receivedAt
-                                                            ? format(
-                                                                  new Date(
-                                                                      order.receivedAt,
-                                                                  ),
-                                                                  "PPP",
-                                                              )
-                                                            : "Unknown date"}
+                                                        {formatDate(
+                                                            order.receivedAt,
+                                                        )}
                                                     </p>
                                                 </div>
                                             </div>

@@ -1,66 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import {
-    ChequeTransaction,
-    Customer,
-    InventoryTransactionType,
-    Payment,
     PaymentMode,
     PaymentStatus,
     Prisma,
     ProductType,
-    SalesOrder,
 } from "@prisma/client";
 
 import { db } from "@/lib/db";
-
-// Define specific types for related entities
-interface ThreadPurchaseRelation {
-    id: number;
-    threadType: string;
-    color: string | null;
-    colorStatus: string;
-    vendor?: {
-        id: number;
-        name: string;
-    } | null;
-}
-
-interface FabricProductionRelation {
-    id: number;
-    fabricType: string;
-    dimensions?: string;
-    batchNumber?: string;
-}
-
-interface SalesOrderItemRelation {
-    id: number;
-    salesOrderId: number;
-    productType: ProductType;
-    productId: number;
-    quantitySold: number;
-    unitPrice: Prisma.Decimal;
-    discount?: Prisma.Decimal | null;
-    tax?: Prisma.Decimal | null;
-    subtotal: Prisma.Decimal;
-    inventoryItemId?: number | null;
-    threadPurchase?: ThreadPurchaseRelation | null;
-    fabricProduction?: FabricProductionRelation | null;
-}
-
-// Use exact type instead of empty extending interface
-type ChequeTransactionRelation = ChequeTransaction;
-
-interface PaymentRelation extends Payment {
-    chequeTransaction?: ChequeTransactionRelation | null;
-}
-
-// Define the complete sales order type with relations
-type SalesOrderWithRelations = SalesOrder & {
-    customer: Customer;
-    items: SalesOrderItemRelation[];
-    payments: PaymentRelation[];
-};
 
 // Define type for whereClause
 type SalesOrderWhereInput = Prisma.SalesOrderWhereInput & {
@@ -88,10 +35,10 @@ export async function GET(req: NextRequest) {
         ) as PaymentStatus | null;
         const limit = searchParams.get("limit")
             ? parseInt(searchParams.get("limit")!)
-            : undefined;
+            : 10;
         const offset = searchParams.get("offset")
             ? parseInt(searchParams.get("offset")!)
-            : undefined;
+            : 0;
 
         // Build the query filters
         const whereClause: SalesOrderWhereInput = {};
@@ -132,8 +79,13 @@ export async function GET(req: NextRequest) {
             };
         }
 
-        // Fetch sales orders with related data - use type assertion to match our custom type
-        const salesOrders = (await db.salesOrder.findMany({
+        // Fetch total count for pagination
+        const totalCount = await db.salesOrder.count({
+            where: whereClause as Prisma.SalesOrderWhereInput,
+        });
+
+        // Fetch sales orders with related data
+        const salesOrders = await db.salesOrder.findMany({
             where: whereClause as Prisma.SalesOrderWhereInput,
             include: {
                 customer: {
@@ -178,199 +130,61 @@ export async function GET(req: NextRequest) {
                         transactionDate: "desc",
                     },
                 },
-            } as Prisma.SalesOrderInclude & {
-                inventoryTransaction?: {
-                    select: {
-                        id: boolean;
-                        quantity: boolean;
-                        transactionType: boolean;
-                        transactionDate: boolean;
-                        inventory: {
-                            select: {
-                                id: boolean;
-                                itemCode: boolean;
-                                currentQuantity: boolean;
-                            };
-                        };
-                    };
-                    where: {
-                        transactionType: InventoryTransactionType;
-                    };
-                    orderBy: {
-                        createdAt: "desc";
-                    };
-                };
             },
             orderBy: {
                 orderDate: "desc",
             },
             take: limit,
             skip: offset,
-        })) as unknown as SalesOrderWithRelations[];
-
-        // Count total records for pagination
-        const totalCount = await db.salesOrder.count({
-            where: whereClause as Prisma.SalesOrderWhereInput,
         });
 
-        // Map the database records to the expected API response format
-        const formattedData = salesOrders.map((order) => {
-            // Calculate payment status dynamically based on total payments
-            const totalPaid = order.payments.reduce(
-                (sum: number, payment) => sum + payment.amount.toNumber(),
-                0,
-            );
-            const totalAmount = order.totalSale.toNumber();
-            let calculatedPaymentStatus = order.paymentStatus;
-
-            // Verify if payment status is accurate based on actual payments
-            if (
-                totalPaid >= totalAmount &&
-                order.paymentStatus !== PaymentStatus.CANCELLED
-            ) {
-                calculatedPaymentStatus = PaymentStatus.PAID;
-            } else if (
-                totalPaid > 0 &&
-                totalPaid < totalAmount &&
-                order.paymentStatus !== PaymentStatus.CANCELLED
-            ) {
-                calculatedPaymentStatus = PaymentStatus.PARTIAL;
-            } else if (
-                totalPaid === 0 &&
-                order.paymentStatus !== PaymentStatus.CANCELLED
-            ) {
-                calculatedPaymentStatus = PaymentStatus.PENDING;
-            }
-
-            // Get cheque status from payments if payment mode is CHEQUE
-            const chequePayment = order.payments.find(
-                (payment) =>
-                    payment.mode === PaymentMode.CHEQUE &&
-                    payment.chequeTransaction,
-            );
-            const chequeTransaction = chequePayment?.chequeTransaction;
-
-            // Format items for response
-            const items = order.items.map((item: SalesOrderItemRelation) => {
-                // Format the product name
-                let productName = `#${item.productId}`;
-
-                if (
-                    item.productType === ProductType.THREAD &&
-                    item.threadPurchase
-                ) {
-                    const tp = item.threadPurchase;
-                    productName = `${tp.threadType} - ${tp.colorStatus === "COLORED" ? tp.color : "Raw"}`;
-                    if (tp.vendor?.name) productName += ` (${tp.vendor.name})`;
-                } else if (
-                    item.productType === ProductType.FABRIC &&
-                    item.fabricProduction
-                ) {
-                    const fp = item.fabricProduction;
-                    productName = `${fp.fabricType}${fp.dimensions ? ` - ${fp.dimensions}` : ""}`;
-                    if (fp.batchNumber)
-                        productName += ` (Batch: ${fp.batchNumber})`;
-                }
-
-                return {
-                    id: item.id,
-                    productType: item.productType,
-                    productId: item.productId,
-                    productName: productName,
-                    quantitySold: item.quantitySold,
-                    unitPrice: item.unitPrice.toNumber(),
-                    discount: item.discount?.toNumber() || null,
-                    tax: item.tax?.toNumber() || null,
-                    subtotal: item.subtotal.toNumber(),
-                    threadPurchase: item.threadPurchase
-                        ? {
-                              id: item.threadPurchase.id,
-                              threadType: item.threadPurchase.threadType,
-                              color: item.threadPurchase.color,
-                              colorStatus: item.threadPurchase.colorStatus,
-                              vendorName: item.threadPurchase.vendor?.name,
-                          }
-                        : null,
-                    fabricProduction: item.fabricProduction
-                        ? {
-                              id: item.fabricProduction.id,
-                              fabricType: item.fabricProduction.fabricType,
-                              dimensions: item.fabricProduction.dimensions,
-                              batchNumber: item.fabricProduction.batchNumber,
-                          }
-                        : null,
-                };
-            });
-
-            // For backward compatibility, use the first item's data for old clients
-            const primaryItem = items.length > 0 ? items[0] : null;
-
-            return {
-                id: order.id,
-                orderNumber: order.orderNumber,
-                orderDate: order.orderDate.toISOString(),
-                customerId: order.customerId,
-                customerName: order.customer?.name || "Unknown Customer",
-                productType: primaryItem?.productType || ProductType.THREAD,
-                productId: primaryItem?.productId || 0,
-                productName: primaryItem?.productName || "Unknown Product",
-                quantitySold: primaryItem?.quantitySold || 0,
-                salePrice: primaryItem?.unitPrice || 0,
-                unitPrice: primaryItem?.unitPrice || 0,
-                discount: primaryItem?.discount || null,
-                tax: primaryItem?.tax || null,
-                totalSale: order.totalSale.toNumber(),
-                deliveryDate: order.deliveryDate
-                    ? order.deliveryDate.toISOString()
+        // Format the response
+        const formattedOrders = salesOrders.map((order) => ({
+            ...order,
+            totalSale: Number(order.totalSale),
+            discount: order.discount ? Number(order.discount) : null,
+            tax: order.tax ? Number(order.tax) : null,
+            items: order.items.map((item) => ({
+                ...item,
+                unitPrice: Number(item.unitPrice),
+                discount: item.discount ? Number(item.discount) : null,
+                tax: item.tax ? Number(item.tax) : null,
+                subtotal: Number(item.subtotal),
+            })),
+            payments: order.payments.map((payment) => ({
+                ...payment,
+                amount: Number(payment.amount),
+                chequeTransaction: payment.chequeTransaction
+                    ? {
+                          ...payment.chequeTransaction,
+                          chequeAmount: Number(
+                              payment.chequeTransaction.chequeAmount,
+                          ),
+                      }
                     : null,
-                deliveryAddress: order.deliveryAddress || null,
-                remarks: order.remarks || null,
-                paymentMode: order.paymentMode || null,
-                paymentStatus: calculatedPaymentStatus,
-                chequeStatus: chequeTransaction?.chequeStatus || null,
-                chequeNumber: chequeTransaction?.chequeNumber || null,
-                bank: chequeTransaction?.bank || null,
-                // Include the multi-item data
-                items: items,
-                // Include legacy properties
-                threadPurchase: primaryItem?.threadPurchase || null,
-                fabricProduction: primaryItem?.fabricProduction || null,
-                payments: order.payments.map((payment: PaymentRelation) => ({
-                    id: payment.id,
-                    amount: payment.amount.toNumber(),
-                    mode: payment.mode,
-                    transactionDate: payment.transactionDate.toISOString(),
-                    referenceNumber: payment.referenceNumber,
-                    description: payment.description,
-                    chequeTransaction: payment.chequeTransaction
-                        ? {
-                              id: payment.chequeTransaction.id,
-                              chequeNumber:
-                                  payment.chequeTransaction.chequeNumber,
-                              bank: payment.chequeTransaction.bank,
-                              branch: payment.chequeTransaction.branch,
-                              chequeAmount:
-                                  payment.chequeTransaction.chequeAmount.toNumber(),
-                              chequeStatus:
-                                  payment.chequeTransaction.chequeStatus,
-                              clearanceDate: payment.chequeTransaction
-                                  .clearanceDate
-                                  ? payment.chequeTransaction.clearanceDate.toISOString()
-                                  : undefined,
-                          }
-                        : null,
-                })),
-            };
-        });
+            })),
+        }));
 
+        // Return the response with proper structure
         return NextResponse.json({
-            items: formattedData,
-            total: totalCount,
+            success: true,
+            data: {
+                items: formattedOrders,
+                total: totalCount,
+                page: Math.floor(offset / limit) + 1,
+                limit,
+            },
         });
     } catch (error) {
         console.error("Error fetching sales orders:", error);
         return NextResponse.json(
-            { error: "Failed to fetch sales orders", details: error },
+            {
+                success: false,
+                error:
+                    error instanceof Error
+                        ? error.message
+                        : "Failed to fetch sales orders",
+            },
             { status: 500 },
         );
     }

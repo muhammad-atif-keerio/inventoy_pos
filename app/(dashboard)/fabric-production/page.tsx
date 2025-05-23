@@ -77,7 +77,13 @@ export default function FabricProductionPage() {
     const fetchFabricProductions = async () => {
         setIsLoading(true);
         try {
-            const response = await fetch("/api/fabric/production");
+            const response = await fetch("/api/fabric/production", {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                cache: "no-store",
+            });
 
             if (!response.ok) {
                 throw new Error(

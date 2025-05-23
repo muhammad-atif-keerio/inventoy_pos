@@ -28,18 +28,18 @@ export async function GET(
                 id: Number(id),
             },
             include: {
-                threadPurchases: {
+                threadPurchase: {
                     orderBy: {
                         orderDate: "desc",
                     },
                     include: {
-                        paymentTransactions: true,
-                        dyeingProcesses: true,
+                        payments: true,
+                        dyeingProcess: true,
                     },
                 },
                 _count: {
                     select: {
-                        threadPurchases: true,
+                        threadPurchase: true,
                     },
                 },
             },
@@ -57,24 +57,24 @@ export async function GET(
             ...vendor,
             createdAt: vendor.createdAt.toISOString(),
             updatedAt: vendor.updatedAt.toISOString(),
-            totalThreadPurchases: vendor._count.threadPurchases,
+            totalThreadPurchases: vendor._count.threadPurchase,
             // Calculate sum of all purchases
-            totalPurchaseValue: vendor.threadPurchases.reduce(
+            totalPurchaseValue: vendor.threadPurchase.reduce(
                 (sum: number, order: ThreadPurchase) => {
                     return sum + Number(order.totalCost);
                 },
                 0,
             ),
             // Calculate pending orders (not received)
-            pendingOrders: vendor.threadPurchases.filter(
+            pendingOrders: vendor.threadPurchase.filter(
                 (order: ThreadPurchase) => !order.received,
             ).length,
             // Format thread purchases
-            threadPurchases: vendor.threadPurchases.map(
+            threadPurchases: vendor.threadPurchase.map(
                 (
                     purchase: ThreadPurchase & {
-                        paymentTransactions: Payment[];
-                        dyeingProcesses: DyeingProcess[];
+                        payments: Payment[];
+                        dyeingProcess: DyeingProcess[];
                     },
                 ) => ({
                     ...purchase,
@@ -88,17 +88,14 @@ export async function GET(
                     unitPrice: Number(purchase.unitPrice),
                     totalCost: Number(purchase.totalCost),
                     // Convert decimal fields in associated records
-                    payments: purchase.paymentTransactions.map(
-                        (payment: Payment) => ({
-                            ...payment,
-                            amount: Number(payment.amount),
-                            transactionDate:
-                                payment.transactionDate.toISOString(),
-                            createdAt: payment.createdAt.toISOString(),
-                            updatedAt: payment.updatedAt.toISOString(),
-                        }),
-                    ),
-                    dyeingProcesses: purchase.dyeingProcesses.map(
+                    payments: purchase.payments.map((payment: Payment) => ({
+                        ...payment,
+                        amount: Number(payment.amount),
+                        transactionDate: payment.transactionDate.toISOString(),
+                        createdAt: payment.createdAt.toISOString(),
+                        updatedAt: payment.updatedAt.toISOString(),
+                    })),
+                    dyeingProcesses: purchase.dyeingProcess.map(
                         (dyeingProcess: DyeingProcess) => ({
                             ...dyeingProcess,
                             dyeDate: dyeingProcess.dyeDate.toISOString(),
@@ -239,7 +236,7 @@ export async function DELETE(
                 id: Number(id),
             },
             include: {
-                threadPurchases: {
+                threadPurchase: {
                     take: 1, // We only need to know if there are any
                 },
             },
@@ -252,7 +249,7 @@ export async function DELETE(
             );
         }
 
-        if (vendorWithPurchases.threadPurchases.length > 0) {
+        if (vendorWithPurchases.threadPurchase.length > 0) {
             return NextResponse.json(
                 {
                     error: "Cannot delete vendor with thread purchases. Remove all purchases first or archive the vendor instead.",

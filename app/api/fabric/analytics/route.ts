@@ -85,13 +85,19 @@ export async function GET() {
             take: 5,
         });
 
-        // METRIC 6: Get fabric sales data
+        // METRIC 6: Get fabric sales analytics
         const fabricSales = await db.salesOrder.aggregate({
             where: {
-                productType: ProductType.FABRIC,
+                items: {
+                    some: {
+                        inventoryItemId: {
+                            not: null,
+                        },
+                        productType: ProductType.FABRIC,
+                    },
+                },
             },
             _sum: {
-                quantitySold: true,
                 totalSale: true,
             },
             _count: {
@@ -99,11 +105,17 @@ export async function GET() {
             },
         });
 
+        
+
         // METRIC 7: Get payment status distribution for fabric sales
         const paymentStatusData = await db.salesOrder.groupBy({
             by: ["paymentStatus"],
             where: {
-                productType: ProductType.FABRIC,
+                items: {
+                    some: {
+                        productType: ProductType.FABRIC,
+                    },
+                },
             },
             _count: {
                 id: true,
@@ -162,10 +174,13 @@ export async function GET() {
                 orderDate: {
                     gte: sixMonthsAgo,
                 },
-                productType: ProductType.FABRIC,
+                items: {
+                    some: {
+                        productType: ProductType.FABRIC,
+                    },
+                },
             },
             _sum: {
-                quantitySold: true,
                 totalSale: true,
             },
         });
@@ -189,7 +204,7 @@ export async function GET() {
             };
             monthlySalesMap.set(month, {
                 month: monthName,
-                quantity: existingData.quantity + (item._sum.quantitySold || 0),
+                quantity: existingData.quantity,
                 revenue:
                     existingData.revenue + Number(item._sum.totalSale || 0),
             });
@@ -224,7 +239,7 @@ export async function GET() {
         // Format the payment status distribution
         const paymentStatusDistribution = paymentStatusData.map((item) => ({
             status: item.paymentStatus,
-            count: item._count.id,
+            count: item._count?.id || 0,
         }));
 
         // Format the fabric types distribution
@@ -268,10 +283,9 @@ export async function GET() {
             byFabricType: fabricTypesDistribution,
             productionTimeline: productionTrends.map((item) => ({
                 month: item.month,
-                count: 1, // Default count, replace with actual count if available
+                count: 1,
                 quantity: item.quantity,
             })),
-            // Also include the original data structure for backward compatibility
             data: {
                 inventorySummary: {
                     fabricInStock: fabricInventory._sum.currentQuantity || 0,
@@ -308,9 +322,8 @@ export async function GET() {
                     avgCostPerUnit,
                 },
                 salesMetrics: {
-                    totalSales: fabricSales._count.id || 0,
-                    totalQuantitySold: fabricSales._sum.quantitySold || 0,
-                    totalRevenue: fabricSales._sum.totalSale
+                    totalSales: fabricSales._count?.id || 0,
+                    totalRevenue: fabricSales._sum?.totalSale
                         ? Number(fabricSales._sum.totalSale)
                         : 0,
                 },
