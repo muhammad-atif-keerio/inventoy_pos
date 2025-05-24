@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-
-import { db } from "../../../../lib/db";
 import { LedgerApiResponse } from "../../ledger-types";
+import { db } from "../../../../lib/db";
 
 // Default khatas to return if database connection fails
 const defaultKhatas = [
@@ -70,9 +69,9 @@ export async function GET(): Promise<NextResponse<LedgerApiResponse>> {
                 return NextResponse.json({
                     success: true,
                     data: {
-                        khatas: defaultKhatas,
+                        khatas: defaultKhatas
                     },
-                    statusCode: 200,
+                    statusCode: 200
                 });
             }
 
@@ -86,24 +85,21 @@ export async function GET(): Promise<NextResponse<LedgerApiResponse>> {
                         description: entry.notes || null,
                         createdAt: entry.createdAt.toISOString(),
                         updatedAt: entry.updatedAt.toISOString(),
-                    })),
+                    }))
                 },
-                statusCode: 200,
+                statusCode: 200
             });
         } catch (queryError) {
             console.error("Error querying khatas:", queryError);
             return NextResponse.json({
                 success: false,
                 data: {
-                    khatas: defaultKhatas,
+                    khatas: defaultKhatas
                 },
                 error: "Failed to query khatas, using default",
-                message:
-                    queryError instanceof Error
-                        ? queryError.message
-                        : String(queryError),
+                message: queryError instanceof Error ? queryError.message : String(queryError),
                 databaseError: true,
-                statusCode: 500,
+                statusCode: 500
             });
         }
     } catch (error) {
@@ -113,12 +109,12 @@ export async function GET(): Promise<NextResponse<LedgerApiResponse>> {
         return NextResponse.json({
             success: false,
             data: {
-                khatas: defaultKhatas,
+                khatas: defaultKhatas
             },
             error: "Failed to fetch khatas, using default",
             message: error instanceof Error ? error.message : String(error),
             databaseError: true,
-            statusCode: 500,
+            statusCode: 500
         });
     }
 }
@@ -127,22 +123,17 @@ export async function GET(): Promise<NextResponse<LedgerApiResponse>> {
  * POST /api/ledger/khata
  * Create a new khata (account book)
  */
-export async function POST(
-    request: NextRequest,
-): Promise<NextResponse<LedgerApiResponse>> {
+export async function POST(request: NextRequest): Promise<NextResponse<LedgerApiResponse>> {
     try {
         const body = await request.json();
 
         // Validate required fields
         if (!body.name || body.name.trim() === "") {
-            return NextResponse.json(
-                {
-                    success: false,
-                    error: "Khata name is required",
-                    statusCode: 400,
-                },
-                { status: 400 },
-            );
+            return NextResponse.json({
+                success: false,
+                error: "Khata name is required",
+                statusCode: 400
+            }, { status: 400 });
         }
 
         // Create a new khata in the database
@@ -160,49 +151,37 @@ export async function POST(
                 },
             });
 
-            return NextResponse.json(
-                {
-                    success: true,
-                    data: {
-                        khata: {
-                            id: newKhata.id,
-                            name: newKhata.description,
-                            description: newKhata.notes,
-                            createdAt: newKhata.createdAt.toISOString(),
-                            updatedAt: newKhata.updatedAt.toISOString(),
-                        },
-                    },
-                    message: "Khata created successfully",
-                    statusCode: 201,
+            return NextResponse.json({
+                success: true,
+                data: {
+                    khata: {
+                        id: newKhata.id,
+                        name: newKhata.description,
+                        description: newKhata.notes,
+                        createdAt: newKhata.createdAt.toISOString(),
+                        updatedAt: newKhata.updatedAt.toISOString(),
+                    }
                 },
-                { status: 201 },
-            );
+                message: "Khata created successfully",
+                statusCode: 201
+            }, { status: 201 });
         } catch (createError) {
             console.error("Error creating khata:", createError);
-            return NextResponse.json(
-                {
-                    success: false,
-                    error: "Failed to create khata",
-                    message:
-                        createError instanceof Error
-                            ? createError.message
-                            : String(createError),
-                    databaseError: true,
-                    statusCode: 500,
-                },
-                { status: 500 },
-            );
+            return NextResponse.json({
+                success: false,
+                error: "Failed to create khata",
+                message: createError instanceof Error ? createError.message : String(createError),
+                databaseError: true,
+                statusCode: 500
+            }, { status: 500 });
         }
     } catch (error) {
         console.error("Error in khata POST request:", error);
-        return NextResponse.json(
-            {
-                success: false,
-                error: "Failed to process request",
-                message: error instanceof Error ? error.message : String(error),
-                statusCode: 500,
-            },
-            { status: 500 },
-        );
+        return NextResponse.json({
+            success: false,
+            error: "Failed to process request",
+            message: error instanceof Error ? error.message : String(error),
+            statusCode: 500
+        }, { status: 500 });
     }
 }

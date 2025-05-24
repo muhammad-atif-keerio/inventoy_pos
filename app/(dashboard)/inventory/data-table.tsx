@@ -63,8 +63,6 @@ import {
 
 // app/inventory/data-table.tsx
 
-// app/inventory/data-table.tsx
-
 interface DataTableProps<TData, TValue> {
     columns: ColumnDef<TData, TValue>[];
     data: TData[];

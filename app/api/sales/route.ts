@@ -53,8 +53,8 @@ export async function GET(req: NextRequest) {
             whereClause.customer = {
                 name: {
                     contains: customerNameSearch,
-                    mode: "insensitive" as Prisma.QueryMode,
-                },
+                    mode: 'insensitive' as Prisma.QueryMode
+                }
             };
         }
 
@@ -153,28 +153,19 @@ export async function GET(req: NextRequest) {
         const formattedOrders = salesOrders.map((order) => {
             // Get first item for orders with just one product
             const firstItem = order.items?.length === 1 ? order.items[0] : null;
-
+            
             // Product name for single-product orders
             let productName = "";
             if (firstItem) {
-                if (
-                    firstItem.productType === "THREAD" &&
-                    firstItem.threadPurchase
-                ) {
+                if (firstItem.productType === "THREAD" && firstItem.threadPurchase) {
                     productName = `${firstItem.threadPurchase.threadType} - ${
-                        firstItem.threadPurchase.colorStatus === "COLORED" &&
-                        firstItem.threadPurchase.color
+                        firstItem.threadPurchase.colorStatus === "COLORED" && firstItem.threadPurchase.color
                             ? firstItem.threadPurchase.color
                             : "Raw"
                     }`;
-                } else if (
-                    firstItem.productType === "FABRIC" &&
-                    firstItem.fabricProduction
-                ) {
+                } else if (firstItem.productType === "FABRIC" && firstItem.fabricProduction) {
                     productName = `${firstItem.fabricProduction.fabricType}${
-                        firstItem.fabricProduction.dimensions
-                            ? ` - ${firstItem.fabricProduction.dimensions}`
-                            : ""
+                        firstItem.fabricProduction.dimensions ? ` - ${firstItem.fabricProduction.dimensions}` : ""
                     }`;
                 }
             }
@@ -188,20 +179,14 @@ export async function GET(req: NextRequest) {
                 // Use productName from first item for single-item orders
                 productName: order.items.length === 1 ? productName : undefined,
                 // Extract single item details for legacy support
-                productType:
-                    firstItem?.productType || order.items[0]?.productType,
+                productType: firstItem?.productType || order.items[0]?.productType,
                 productId: firstItem?.productId || order.items[0]?.productId,
-                quantitySold: firstItem
-                    ? firstItem.quantitySold
-                    : order.items.reduce(
-                          (sum, item) => sum + item.quantitySold,
-                          0,
-                      ),
-                unitPrice: firstItem
-                    ? Number(firstItem.unitPrice)
-                    : order.items.length > 0
-                      ? Number(order.items[0].unitPrice)
-                      : 0,
+                quantitySold: firstItem ? firstItem.quantitySold : order.items.reduce((sum, item) => sum + item.quantitySold, 0),
+                unitPrice: firstItem ? Number(firstItem.unitPrice) : (
+                    order.items.length > 0 ? 
+                    Number(order.items[0].unitPrice) : 
+                    0
+                ),
                 // Financial calculations
                 totalSale: Number(order.totalSale),
                 discount: order.discount ? Number(order.discount) : null,
@@ -312,10 +297,7 @@ export async function POST(req: NextRequest) {
 
         if (!response.ok) {
             return NextResponse.json(
-                {
-                    success: false,
-                    error: result.error || "Failed to create sale",
-                },
+                { success: false, error: result.error || "Failed to create sale" },
                 { status: response.status },
             );
         }

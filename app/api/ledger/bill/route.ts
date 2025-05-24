@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { LedgerValidator, LedgerApiResponse } from "../../ledger-types";
 
 // Import db from the correct location
 import { db } from "../../../../lib/db";
-import { LedgerApiResponse, LedgerValidator } from "../../ledger-types";
 
 // Check if we're using real client
 const isUsingRealLedgerClient = !!process.env.LEDGER_DATABASE_URL;
@@ -128,15 +128,15 @@ export async function GET(request: NextRequest) {
             const response: LedgerApiResponse = {
                 success: true,
                 data: {
-                    bills: formattedBills,
+                    bills: formattedBills
                 },
                 meta: {
                     page,
                     pageSize,
                     total: totalCount,
-                    totalPages: Math.ceil(totalCount / pageSize),
+                    totalPages: Math.ceil(totalCount / pageSize)
                 },
-                statusCode: 200,
+                statusCode: 200
             };
 
             return NextResponse.json(response);
@@ -200,29 +200,29 @@ export async function GET(request: NextRequest) {
             const response: LedgerApiResponse = {
                 success: true,
                 data: {
-                    bills: mockBills,
+                    bills: mockBills
                 },
                 meta: {
                     page: 1,
                     pageSize: 10,
                     total: mockBills.length,
-                    totalPages: 1,
+                    totalPages: 1
                 },
-                statusCode: 200,
+                statusCode: 200
             };
 
             return NextResponse.json(response);
         }
     } catch (error) {
         console.error("Error fetching bills:", error);
-
+        
         const response: LedgerApiResponse = {
             success: false,
             error: "Failed to fetch bills",
             message: error instanceof Error ? error.message : String(error),
-            statusCode: 500,
+            statusCode: 500
         };
-
+        
         return NextResponse.json(response, { status: 500 });
     }
 }
@@ -244,7 +244,7 @@ export async function POST(request: NextRequest) {
             amount: body.amount ? parseFloat(body.amount) : undefined,
             billType: body.billType,
             status: body.status || "PENDING",
-            paidAmount: body.paidAmount ? parseFloat(body.paidAmount) : 0,
+            paidAmount: body.paidAmount ? parseFloat(body.paidAmount) : 0
         });
 
         if (!validation.isValid) {
@@ -252,7 +252,7 @@ export async function POST(request: NextRequest) {
                 success: false,
                 error: "Invalid bill data",
                 message: validation.errors.join(", "),
-                statusCode: 400,
+                statusCode: 400
             };
             return NextResponse.json(response, { status: 400 });
         }
@@ -280,8 +280,8 @@ export async function POST(request: NextRequest) {
                 const newBill = await db.ledgerEntry.create({
                     data: {
                         // Add khata reference
-                        reference: `${billNumber}${body.khataId ? ` khata:${body.khataId}` : ""}`,
-                        notes: `${body.description || ""}${body.description ? "\n" : ""}khata:${body.khataId}${body.partyId ? `\nparty:${body.partyId}` : ""}`,
+                        reference: `${billNumber}${body.khataId ? ` khata:${body.khataId}` : ''}`,
+                        notes: `${body.description || ''}${body.description ? '\n' : ''}khata:${body.khataId}${body.partyId ? `\nparty:${body.partyId}` : ''}`,
                         entryType: "BILL",
                         entryDate: new Date(body.billDate),
                         dueDate: body.dueDate
@@ -321,24 +321,23 @@ export async function POST(request: NextRequest) {
                             transactions: [],
                             createdAt: newBill.createdAt.toISOString(),
                             updatedAt: newBill.updatedAt.toISOString(),
-                        },
+                        }
                     },
                     message: "Bill created successfully",
-                    statusCode: 201,
+                    statusCode: 201
                 };
-
+                
                 return NextResponse.json(response, { status: 201 });
             } catch (error) {
                 console.error("Error creating bill entry:", error);
-
+                
                 const response: LedgerApiResponse = {
                     success: false,
                     error: "Failed to create bill entry",
-                    message:
-                        error instanceof Error ? error.message : String(error),
-                    statusCode: 500,
+                    message: error instanceof Error ? error.message : String(error),
+                    statusCode: 500
                 };
-
+                
                 return NextResponse.json(response, { status: 500 });
             }
         } else {
@@ -364,24 +363,24 @@ export async function POST(request: NextRequest) {
                         transactions: [],
                         createdAt: new Date().toISOString(),
                         updatedAt: new Date().toISOString(),
-                    },
+                    }
                 },
                 message: "Mock bill created successfully",
-                statusCode: 201,
+                statusCode: 201
             };
-
+            
             return NextResponse.json(response, { status: 201 });
         }
     } catch (error) {
         console.error("Error creating bill:", error);
-
+        
         const response: LedgerApiResponse = {
             success: false,
             error: "Failed to create bill",
             message: error instanceof Error ? error.message : String(error),
-            statusCode: 500,
+            statusCode: 500
         };
-
+        
         return NextResponse.json(response, { status: 500 });
     }
 }

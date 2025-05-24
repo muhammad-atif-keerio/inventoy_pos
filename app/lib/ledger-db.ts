@@ -2,27 +2,13 @@
 /* eslint-disable no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { cache } from "react";
-
 import { PrismaClient as MainPrismaClient } from "@prisma/client";
 
 // Import types from shared types file
 import {
-    BankAccount,
-    Bill,
-    BillStatus,
-    BillType,
-    Cheque,
-    ChequeStatus,
-    Inventory,
-    InventoryType,
-    Khata,
-    LedgerDbClient,
-    LedgerError,
-    ModelProxy,
-    Party,
-    PartyType,
-    Transaction,
-    TransactionType,
+  Khata, Bill, Party, Transaction, BankAccount, Cheque, Inventory,
+  BillType, BillStatus, PartyType, TransactionType, ChequeStatus, InventoryType,
+  ModelProxy, LedgerDbClient, LedgerError
 } from "./ledger-types";
 
 // Re-export all types for other modules to use
@@ -35,164 +21,146 @@ let PrismaClient;
  * Connection status tracker for better connection management
  */
 const connectionState = {
-    isConnected: false,
-    lastConnectAttempt: 0,
-    connectRetries: 0,
-    maxRetries: 3,
-    retryDelay: 1000, // 1 second initial delay, will be multiplied by retryCount
-
-    // Reset connection state
-    reset() {
-        this.isConnected = false;
-        this.connectRetries = 0;
-        this.lastConnectAttempt = 0;
-    },
+  isConnected: false,
+  lastConnectAttempt: 0,
+  connectRetries: 0,
+  maxRetries: 3,
+  retryDelay: 1000, // 1 second initial delay, will be multiplied by retryCount
+  
+  // Reset connection state
+  reset() {
+    this.isConnected = false;
+    this.connectRetries = 0;
+    this.lastConnectAttempt = 0;
+  }
 };
 
 // Mock client for development/testing
 class MockPrismaClient implements LedgerDbClient {
-    khata: ModelProxy<Khata>;
-    bill: ModelProxy<Bill>;
-    party: ModelProxy<Party>;
-    bankAccount: ModelProxy<BankAccount>;
-    transaction: ModelProxy<Transaction>;
-    cheque: ModelProxy<Cheque>;
-    inventory: ModelProxy<Inventory>;
+  khata: ModelProxy<Khata>;
+  bill: ModelProxy<Bill>;
+  party: ModelProxy<Party>;
+  bankAccount: ModelProxy<BankAccount>;
+  transaction: ModelProxy<Transaction>;
+  cheque: ModelProxy<Cheque>;
+  inventory: ModelProxy<Inventory>;
+  
+  constructor(options: any = {}) {
+    console.log('Using Mock Ledger PrismaClient:', options);
+    // Create proxies for all the models
+    this.khata = createModelProxy<Khata>('khata');
+    this.bill = createModelProxy<Bill>('bill');
+    this.party = createModelProxy<Party>('party');
+    this.bankAccount = createModelProxy<BankAccount>('bankAccount');
+    this.transaction = createModelProxy<Transaction>('transaction');
+    this.cheque = createModelProxy<Cheque>('cheque');
+    this.inventory = createModelProxy<Inventory>('inventory');
+  }
 
-    constructor(options: any = {}) {
-        console.log("Using Mock Ledger PrismaClient:", options);
-        // Create proxies for all the models
-        this.khata = createModelProxy<Khata>("khata");
-        this.bill = createModelProxy<Bill>("bill");
-        this.party = createModelProxy<Party>("party");
-        this.bankAccount = createModelProxy<BankAccount>("bankAccount");
-        this.transaction = createModelProxy<Transaction>("transaction");
-        this.cheque = createModelProxy<Cheque>("cheque");
-        this.inventory = createModelProxy<Inventory>("inventory");
-    }
+  // Mock $connect method
+  async $connect(): Promise<void> {
+    console.log('Mock ledger DB connected');
+    return Promise.resolve();
+  }
 
-    // Mock $connect method
-    async $connect(): Promise<void> {
-        console.log("Mock ledger DB connected");
-        return Promise.resolve();
-    }
-
-    // Mock $disconnect method
-    async $disconnect(): Promise<void> {
-        console.log("Mock ledger DB disconnected");
-        return Promise.resolve();
-    }
+  // Mock $disconnect method
+  async $disconnect(): Promise<void> {
+    console.log('Mock ledger DB disconnected');
+    return Promise.resolve();
+  }
 }
 
 // Helper to create model proxies for mock client
 function createModelProxy<T>(modelName: string): ModelProxy<T> {
-    // Generate some realistic sample data based on the model type
-    const getSampleData = () => {
-        const now = new Date();
-        const yesterday = new Date(now);
-        yesterday.setDate(yesterday.getDate() - 1);
-
-        // Common properties for all models
-        const baseData = {
-            id: Math.floor(Math.random() * 1000) + 1,
-            createdAt: yesterday,
-            updatedAt: now,
+  // Generate some realistic sample data based on the model type
+  const getSampleData = () => {
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    // Common properties for all models
+    const baseData = {
+      id: Math.floor(Math.random() * 1000) + 1,
+      createdAt: yesterday,
+      updatedAt: now
+    };
+    
+    switch (modelName) {
+      case 'khata':
+        return {
+          ...baseData,
+          name: 'Sample Khata',
+          description: 'This is a sample khata entry generated by the mock client'
         };
+      case 'bill':
+        return {
+          ...baseData,
+          billNumber: `B-${Math.floor(Math.random() * 10000)}`,
+          khataId: 1,
+          partyId: Math.floor(Math.random() * 5) + 1,
+          billDate: yesterday,
+          dueDate: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+          amount: Math.floor(Math.random() * 10000),
+          paidAmount: Math.floor(Math.random() * 5000),
+          description: 'Sample bill entry',
+          billType: BillType.PURCHASE,
+          status: BillStatus.PENDING
+        };
+      case 'party':
+        return {
+          ...baseData,
+          name: `Sample ${Math.random() > 0.5 ? 'Vendor' : 'Customer'}`,
+          type: Math.random() > 0.5 ? PartyType.VENDOR : PartyType.CUSTOMER,
+          khataId: 1,
+          contact: 'Sample Contact',
+          phoneNumber: '123-456-7890',
+          email: 'sample@example.com',
+          address: '123 Sample St',
+          city: 'Sample City',
+          description: 'Sample party entry'
+        };
+      default:
+        return baseData;
+    }
+  };
 
-        switch (modelName) {
-            case "khata":
-                return {
-                    ...baseData,
-                    name: "Sample Khata",
-                    description:
-                        "This is a sample khata entry generated by the mock client",
-                };
-            case "bill":
-                return {
-                    ...baseData,
-                    billNumber: `B-${Math.floor(Math.random() * 10000)}`,
-                    khataId: 1,
-                    partyId: Math.floor(Math.random() * 5) + 1,
-                    billDate: yesterday,
-                    dueDate: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
-                    amount: Math.floor(Math.random() * 10000),
-                    paidAmount: Math.floor(Math.random() * 5000),
-                    description: "Sample bill entry",
-                    billType: BillType.PURCHASE,
-                    status: BillStatus.PENDING,
-                };
-            case "party":
-                return {
-                    ...baseData,
-                    name: `Sample ${Math.random() > 0.5 ? "Vendor" : "Customer"}`,
-                    type:
-                        Math.random() > 0.5
-                            ? PartyType.VENDOR
-                            : PartyType.CUSTOMER,
-                    khataId: 1,
-                    contact: "Sample Contact",
-                    phoneNumber: "123-456-7890",
-                    email: "sample@example.com",
-                    address: "123 Sample St",
-                    city: "Sample City",
-                    description: "Sample party entry",
-                };
-            default:
-                return baseData;
-        }
-    };
-
-    return {
-        create: (args) =>
-            Promise.resolve({
-                ...getSampleData(),
-                ...args.data,
-            } as unknown as T),
-        findMany: (args) => {
-            const count = Math.floor(Math.random() * 10) + 3;
-            const items = [];
-            for (let i = 0; i < count; i++) {
-                items.push(getSampleData());
-            }
-            return Promise.resolve(items as unknown as T[]);
-        },
-        findUnique: (args) => Promise.resolve(getSampleData() as unknown as T),
-        findFirst: (args) => Promise.resolve(getSampleData() as unknown as T),
-        update: (args) =>
-            Promise.resolve({
-                ...getSampleData(),
-                id: args.where.id,
-            } as unknown as T),
-        upsert: (args) => Promise.resolve(getSampleData() as unknown as T),
-        delete: (args) =>
-            Promise.resolve({ id: args.where.id } as unknown as T),
-        count: (args) => Promise.resolve(Math.floor(Math.random() * 50) + 5),
-    };
+  return {
+    create: (args) => Promise.resolve({ ...getSampleData(), ...args.data } as unknown as T),
+    findMany: (args) => {
+      const count = Math.floor(Math.random() * 10) + 3;
+      const items = [];
+      for (let i = 0; i < count; i++) {
+        items.push(getSampleData());
+      }
+      return Promise.resolve(items as unknown as T[]);
+    },
+    findUnique: (args) => Promise.resolve(getSampleData() as unknown as T),
+    findFirst: (args) => Promise.resolve(getSampleData() as unknown as T),
+    update: (args) => Promise.resolve({ ...getSampleData(), id: args.where.id } as unknown as T),
+    upsert: (args) => Promise.resolve(getSampleData() as unknown as T),
+    delete: (args) => Promise.resolve({ id: args.where.id } as unknown as T),
+    count: (args) => Promise.resolve(Math.floor(Math.random() * 50) + 5)
+  };
 }
 
 // Create a function to get the Prisma client
 const prismaClientSingleton = () => {
+  try {
+    // In production environments, we absolutely need to connect to a real database
+    if (process.env.NODE_ENV === 'production' && !process.env.LEDGER_DATABASE_URL) {
+      console.error('CRITICAL ERROR: LEDGER_DATABASE_URL not set in production environment');
+      throw new Error('Database connection configuration missing');
+    }
+    
     try {
-        // In production environments, we absolutely need to connect to a real database
-        if (
-            process.env.NODE_ENV === "production" &&
-            !process.env.LEDGER_DATABASE_URL
-        ) {
-            console.error(
-                "CRITICAL ERROR: LEDGER_DATABASE_URL not set in production environment",
-            );
-            throw new Error("Database connection configuration missing");
-        }
-
-        try {
-            // Dynamically import to avoid circular dependency
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            const { LedgerClientAdapter } = require("./ledger-adapter");
-            // Use our adapter to map prefixed models to expected interfaces
-            const client = new LedgerClientAdapter();
-            console.log("Created adapter for ledger database client");
-            return client;
-        } catch (error) {
+      // Dynamically import to avoid circular dependency
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { LedgerClientAdapter } = require('./ledger-adapter');
+        // Use our adapter to map prefixed models to expected interfaces
+        const client = new LedgerClientAdapter();
+        console.log("Created adapter for ledger database client");
+        return client;
+      } catch (error) {
             console.error("Error creating Prisma client:", error);
 
             // In production, fail hard if we can't connect to the database
@@ -201,9 +169,7 @@ const prismaClientSingleton = () => {
             }
 
             // In development, fall back to mock client
-            console.log(
-                "Falling back to mock client in development environment",
-            );
+      console.log("Falling back to mock client in development environment");
             return new MockPrismaClient();
         }
     } catch (error) {
@@ -240,96 +206,178 @@ function getCachedClient() {
 export const isUsingRealLedgerClient = !!process.env.LEDGER_DATABASE_URL;
 
 /**
+ * Safely fetch a ledger entry by ID with proper error handling
+ * @param modelName The model to fetch from (e.g., 'bill', 'transaction')
+ * @param id The ID of the entry to fetch
+ * @param options Additional options for the fetch
+ * @returns The fetched entry or null if not found
+ */
+export async function safelyFetchLedgerEntry<T>(
+  modelName: 'bill' | 'transaction' | 'party' | 'bankAccount' | 'cheque' | 'inventory' | 'khata', 
+  id: number | string,
+  options: {
+    include?: any;
+    select?: any;
+    where?: any;
+    useCache?: boolean;
+    errorCallback?: (error: Error) => void;
+  } = {}
+): Promise<T | null> {
+  // Generate cache key if caching is enabled
+  const idNum = typeof id === 'string' ? parseInt(id) : id;
+  const cacheKey = options.useCache ? `${modelName}-${idNum}-${JSON.stringify(options.include || {})}-${JSON.stringify(options.select || {})}` : null;
+  
+  // Check cache if enabled
+  if (cacheKey) {
+    const cachedResult = queryCache.get(cacheKey);
+    if (cachedResult !== undefined) {
+      return cachedResult as T;
+    }
+  }
+  
+  try {
+    // Get the model from ledgerDb
+    const model = ledgerDb[modelName as keyof typeof ledgerDb] as ModelProxy<T>;
+    if (!model) {
+      throw new LedgerError(`Model ${modelName} not found`, { operation: 'safelyFetchLedgerEntry', entityType: modelName });
+    }
+    
+    // Build query options
+    const queryOptions: any = {
+      where: { id: idNum, ...options.where },
+      ...(options.include ? { include: options.include } : {}),
+      ...(options.select ? { select: options.select } : {})
+    };
+    
+    // Attempt to fetch the entry
+    const entry = await model.findUnique(queryOptions);
+    
+    // Cache the result if caching is enabled
+    if (cacheKey && entry) {
+      queryCache.set(cacheKey, entry);
+    }
+    
+    return entry;
+  } catch (error) {
+    // Call custom error handler if provided
+    if (options.errorCallback && error instanceof Error) {
+      options.errorCallback(error);
+    }
+    
+    console.error(`Error fetching ${modelName} with ID ${id}:`, error);
+    
+    // In development mode, we can provide mock data
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`Using mock data for ${modelName} with ID ${id}`);
+      
+      // Create a mock client to generate mock data
+      const mockClient = new MockPrismaClient();
+      const mockEntry = await (mockClient[modelName as keyof typeof mockClient] as ModelProxy<T>).findUnique({ where: { id: idNum } });
+      
+      if (mockEntry) {
+        // Add flag to indicate this is mock data
+        (mockEntry as any).isMockEntry = true;
+      }
+      
+      return mockEntry;
+    }
+    
+    // In production, we return null to indicate that the entry was not found
+    return null;
+  }
+}
+
+/**
  * Cache configuration for database queries
  */
 const cacheConfig = {
-    ttl: 60 * 1000, // Default TTL: 1 minute
-    maxSize: 100, // Maximum number of cached items
+  ttl: 60 * 1000, // Default TTL: 1 minute
+  maxSize: 100, // Maximum number of cached items
 };
 
 /**
  * Simple cache for database queries
  */
 class QueryCache {
-    private cache = new Map<string, { data: any; timestamp: number }>();
-    private size = 0;
+  private cache = new Map<string, { data: any; timestamp: number }>();
+  private size = 0;
 
-    /**
-     * Get an item from cache
-     * @param key Cache key
-     * @returns Cached item or undefined if not found or expired
-     */
-    get(key: string): any | undefined {
-        const item = this.cache.get(key);
-        if (!item) return undefined;
-
-        // Check if item has expired
-        if (Date.now() - item.timestamp > cacheConfig.ttl) {
-            this.delete(key);
-            return undefined;
-        }
-
-        return item.data;
+  /**
+   * Get an item from cache
+   * @param key Cache key
+   * @returns Cached item or undefined if not found or expired
+   */
+  get(key: string): any | undefined {
+    const item = this.cache.get(key);
+    if (!item) return undefined;
+    
+    // Check if item has expired
+    if (Date.now() - item.timestamp > cacheConfig.ttl) {
+      this.delete(key);
+      return undefined;
     }
+    
+    return item.data;
+  }
 
-    /**
-     * Set an item in cache
-     * @param key Cache key
-     * @param data Data to cache
-     */
-    set(key: string, data: any): void {
-        // Evict oldest item if cache is full
-        if (this.size >= cacheConfig.maxSize && !this.cache.has(key)) {
-            const oldestKey = this.getOldestKey();
-            if (oldestKey) this.delete(oldestKey);
-        }
-
-        this.cache.set(key, {
-            data,
-            timestamp: Date.now(),
-        });
-
-        this.size = this.cache.size;
+  /**
+   * Set an item in cache
+   * @param key Cache key
+   * @param data Data to cache
+   */
+  set(key: string, data: any): void {
+    // Evict oldest item if cache is full
+    if (this.size >= cacheConfig.maxSize && !this.cache.has(key)) {
+      const oldestKey = this.getOldestKey();
+      if (oldestKey) this.delete(oldestKey);
     }
+    
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now()
+    });
+    
+    this.size = this.cache.size;
+  }
 
-    /**
-     * Delete an item from cache
-     * @param key Cache key
-     * @returns True if item was deleted
-     */
-    delete(key: string): boolean {
-        const result = this.cache.delete(key);
-        this.size = this.cache.size;
-        return result;
+  /**
+   * Delete an item from cache
+   * @param key Cache key
+   * @returns True if item was deleted
+   */
+  delete(key: string): boolean {
+    const result = this.cache.delete(key);
+    this.size = this.cache.size;
+    return result;
+  }
+
+  /**
+   * Clear the entire cache
+   */
+  clear(): void {
+    this.cache.clear();
+    this.size = 0;
+  }
+
+  /**
+   * Find the oldest key in the cache
+   * @returns Oldest key or undefined if cache is empty
+   */
+  private getOldestKey(): string | undefined {
+    if (this.cache.size === 0) return undefined;
+    
+    let oldestKey: string | undefined;
+    let oldestTime = Infinity;
+    
+    for (const [key, item] of this.cache.entries()) {
+      if (item.timestamp < oldestTime) {
+        oldestTime = item.timestamp;
+        oldestKey = key;
+      }
     }
-
-    /**
-     * Clear the entire cache
-     */
-    clear(): void {
-        this.cache.clear();
-        this.size = 0;
-    }
-
-    /**
-     * Find the oldest key in the cache
-     * @returns Oldest key or undefined if cache is empty
-     */
-    private getOldestKey(): string | undefined {
-        if (this.cache.size === 0) return undefined;
-
-        let oldestKey: string | undefined;
-        let oldestTime = Infinity;
-
-        for (const [key, item] of this.cache.entries()) {
-            if (item.timestamp < oldestTime) {
-                oldestTime = item.timestamp;
-                oldestKey = key;
-            }
-        }
-
-        return oldestKey;
-    }
+    
+    return oldestKey;
+  }
 }
 
 // Create a global query cache
@@ -341,23 +389,20 @@ export const queryCache = new QueryCache();
  * @param queryFn Function that performs the database query
  * @returns Query result
  */
-export async function cachedQuery<T>(
-    key: string,
-    queryFn: () => Promise<T>,
-): Promise<T> {
-    // Check cache first
-    const cachedResult = queryCache.get(key);
-    if (cachedResult !== undefined) {
-        return cachedResult as T;
-    }
-
-    // Execute query
-    const result = await queryFn();
-
-    // Cache the result
-    queryCache.set(key, result);
-
-    return result;
+export async function cachedQuery<T>(key: string, queryFn: () => Promise<T>): Promise<T> {
+  // Check cache first
+  const cachedResult = queryCache.get(key);
+  if (cachedResult !== undefined) {
+    return cachedResult as T;
+  }
+  
+  // Execute query
+  const result = await queryFn();
+  
+  // Cache the result
+  queryCache.set(key, result);
+  
+  return result;
 }
 
 /**
@@ -365,6 +410,6 @@ export async function cachedQuery<T>(
  * @param pattern Regex pattern to match cache keys
  */
 export function invalidateCache(pattern: RegExp): void {
-    // This is a simplification - in a real implementation we'd iterate through keys
-    queryCache.clear();
+  // This is a simplification - in a real implementation we'd iterate through keys
+  queryCache.clear();
 }

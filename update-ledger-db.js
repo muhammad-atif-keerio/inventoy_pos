@@ -5,21 +5,21 @@ const path = require("path");
 console.log("🔧 Updating ledger-db.ts file...");
 
 try {
-    // Path to ledger-db.ts file
-    const ledgerDbPath = path.join(__dirname, "app", "lib", "ledger-db.ts");
-
-    if (!fs.existsSync(ledgerDbPath)) {
-        console.error(`❌ File not found: ${ledgerDbPath}`);
-        process.exit(1);
-    }
-
-    // Read the file
-    let content = fs.readFileSync(ledgerDbPath, "utf8");
-
-    // Update the content to use schema parameter correctly
-
-    // 1. Ensure URL parsing properly handles schema parameter
-    const schemaParsingFix = `
+  // Path to ledger-db.ts file
+  const ledgerDbPath = path.join(__dirname, "app", "lib", "ledger-db.ts");
+  
+  if (!fs.existsSync(ledgerDbPath)) {
+    console.error(`❌ File not found: ${ledgerDbPath}`);
+    process.exit(1);
+  }
+  
+  // Read the file
+  let content = fs.readFileSync(ledgerDbPath, "utf8");
+  
+  // Update the content to use schema parameter correctly
+  
+  // 1. Ensure URL parsing properly handles schema parameter
+  const schemaParsingFix = `
     // Extract schema from query params if present
     const searchParams = url.searchParams;
     const schema = searchParams.get("schema") || "public";
@@ -35,15 +35,15 @@ try {
         rejectUnauthorized: false, // This allows self-signed or invalid certificates
       },
     };`;
-
-    // Replace the URL parsing section
-    content = content.replace(
-        /const searchParams = url\.searchParams;.*?rejectUnauthorized: false,.*?\s+\},/s,
-        schemaParsingFix,
-    );
-
-    // 2. Update Prisma client initialization to use schema
-    const prismaInitFix = `
+  
+  // Replace the URL parsing section
+  content = content.replace(
+    /const searchParams = url\.searchParams;.*?rejectUnauthorized: false,.*?\s+\},/s,
+    schemaParsingFix
+  );
+  
+  // 2. Update Prisma client initialization to use schema
+  const prismaInitFix = `
             const prismaClient = new PrismaClient({
                 log: ["error", "warn"],
                 datasources: {
@@ -52,19 +52,20 @@ try {
                     }
                 }
             });`;
-
-    content = content.replace(
-        /const prismaClient = new PrismaClient\(\{.*?datasources:.*?\{.*?db:.*?\{.*?url: ledgerDbUrl.*?\}.*?\}.*?\}\);/s,
-        prismaInitFix,
-    );
-
-    // Write the updated content back to the file
-    fs.writeFileSync(ledgerDbPath, content);
-    console.log("✅ Successfully updated ledger-db.ts file");
-
-    // Create a backup just in case
-    fs.copyFileSync(ledgerDbPath, `${ledgerDbPath}.backup`);
-    console.log(`✅ Created backup at ${ledgerDbPath}.backup`);
+  
+  content = content.replace(
+    /const prismaClient = new PrismaClient\(\{.*?datasources:.*?\{.*?db:.*?\{.*?url: ledgerDbUrl.*?\}.*?\}.*?\}\);/s,
+    prismaInitFix
+  );
+  
+  // Write the updated content back to the file
+  fs.writeFileSync(ledgerDbPath, content);
+  console.log("✅ Successfully updated ledger-db.ts file");
+  
+  // Create a backup just in case
+  fs.copyFileSync(ledgerDbPath, `${ledgerDbPath}.backup`);
+  console.log(`✅ Created backup at ${ledgerDbPath}.backup`);
+  
 } catch (error) {
-    console.error("❌ Error updating ledger-db.ts:", error.message);
-}
+  console.error("❌ Error updating ledger-db.ts:", error.message);
+} 

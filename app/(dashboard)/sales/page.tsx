@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 
 import { Plus } from "lucide-react";
 
@@ -39,14 +39,8 @@ export default function SalesPage() {
         window.addEventListener("refreshSalesData", handleSalesDataUpdated);
 
         return () => {
-            window.removeEventListener(
-                "salesDataUpdated",
-                handleSalesDataUpdated,
-            );
-            window.removeEventListener(
-                "refreshSalesData",
-                handleSalesDataUpdated,
-            );
+            window.removeEventListener("salesDataUpdated", handleSalesDataUpdated);
+            window.removeEventListener("refreshSalesData", handleSalesDataUpdated);
         };
     }, []);
 

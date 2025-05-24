@@ -256,26 +256,23 @@ export async function GET(request: NextRequest) {
         );
 
         // Return the formatted response
-        return NextResponse.json(
-            {
-                success: true,
-                data: {
-                    entries: formattedEntries,
-                    summary,
-                },
-                meta: {
-                    page,
-                    pageSize: limit,
-                    total: totalEntries,
-                    totalPages: Math.ceil(totalEntries / limit),
-                },
-                statusCode: 200,
+        return NextResponse.json({
+            success: true,
+            data: {
+                entries: formattedEntries,
+                summary
             },
-            {
-                headers,
-                status: 200,
+            meta: {
+                page,
+                pageSize: limit,
+                total: totalEntries,
+                totalPages: Math.ceil(totalEntries / limit)
             },
-        );
+            statusCode: 200
+        }, { 
+            headers,
+            status: 200 
+        });
     } catch (error) {
         console.error("Error fetching ledger entries:", error);
 

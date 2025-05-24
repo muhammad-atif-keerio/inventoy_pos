@@ -69,12 +69,9 @@ function generateLedgerClient() {
         }
 
         // Generate the client
-        execSync(
-            "npx prisma generate --schema=prisma/schema-ledger-schema.prisma",
-            {
-                stdio: "inherit",
-            },
-        );
+        execSync("npx prisma generate --schema=prisma/schema-ledger-schema.prisma", {
+            stdio: "inherit",
+        });
 
         // Check if the client was generated
         const clientPath = path.join(targetDir, "index.js");
@@ -99,24 +96,15 @@ function generateLedgerClient() {
 function setupLedgerAdapter() {
     try {
         console.log("Setting up ledger adapter...");
-
-        const adapterPath = path.join(
-            __dirname,
-            "app",
-            "lib",
-            "ledger-adapter.ts",
-        );
+        
+        const adapterPath = path.join(__dirname, "app", "lib", "ledger-adapter.ts");
         if (!fs.existsSync(adapterPath)) {
-            console.log(
-                "ledger-adapter.ts not found! Please run node create-ledger-schema.js first.",
-            );
+            console.log("ledger-adapter.ts not found! Please run node create-ledger-schema.js first.");
             return false;
         }
 
         // The file exists and has been configured with our changes
-        console.log(
-            "✅ Adapter file already exists and is properly configured",
-        );
+        console.log("✅ Adapter file already exists and is properly configured");
         return true;
     } catch (error) {
         console.error("Error setting up ledger adapter:", error.message);
@@ -160,9 +148,7 @@ async function main() {
     console.log("\n📌 Next steps:");
     console.log("1. Restart your Next.js development server");
     console.log("2. Visit the /ledger route in your application");
-    console.log(
-        "3. The system will use mock data in development mode until you fix the database connection",
-    );
+    console.log("3. The system will use mock data in development mode until you fix the database connection");
 }
 
 main().catch((error) => {

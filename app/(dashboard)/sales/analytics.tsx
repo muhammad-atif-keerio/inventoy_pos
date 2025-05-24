@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { format } from "date-fns";
 
 import { PaymentMode, PaymentStatus, ProductType } from "@prisma/client";
-import { format } from "date-fns";
 import {
     BarChart as BarChartIcon,
     DollarSign,
@@ -112,55 +112,43 @@ const exportToCSV = (data: Record<string, unknown>[], filename: string) => {
     }
 
     const headers = Object.keys(data[0]);
-
+    
     const csvContent = [
-        headers.join(","),
-        ...data.map((row) =>
-            headers
-                .map((header) => {
-                    let value = row[header];
-                    if (value instanceof Date) {
-                        value = format(value, "yyyy-MM-dd");
-                    }
-                    if (typeof value === "object" && value !== null) {
-                        value = JSON.stringify(value);
-                    }
-                    if (
-                        typeof value === "string" &&
-                        (value.includes(",") || value.includes('"'))
-                    ) {
-                        value = `"${value.replace(/"/g, '""')}"`;
-                    }
-                    return value;
-                })
-                .join(","),
-        ),
-    ].join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        headers.join(','),
+        ...data.map(row => 
+            headers.map(header => {
+                let value = row[header];
+                if (value instanceof Date) {
+                    value = format(value, 'yyyy-MM-dd');
+                }
+                if (typeof value === 'object' && value !== null) {
+                    value = JSON.stringify(value);
+                }
+                if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
+                    value = `"${value.replace(/"/g, '""')}"`;
+                }
+                return value;
+            }).join(',')
+        )
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute(
-        "download",
-        `${filename}-${format(new Date(), "yyyy-MM-dd")}.csv`,
-    );
-    link.style.visibility = "hidden";
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${filename}-${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-
+    
     toast.success(`Successfully exported ${data.length} records`);
 };
 
 export function SalesAnalytics() {
     const [loading, setLoading] = useState(true);
-    const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(
-        null,
-    );
-    const [timeRange, setTimeRange] = useState<"7days" | "30days" | "1year">(
-        "30days",
-    );
+    const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
+    const [timeRange, setTimeRange] = useState<"7days" | "30days" | "1year">("30days");
 
     // Fetch analytics data
     useEffect(() => {
@@ -225,11 +213,7 @@ export function SalesAnalytics() {
 
     // Export functions
     const handleExportSales = () => {
-        if (
-            !analyticsData ||
-            !analyticsData.salesByTimeframe ||
-            analyticsData.salesByTimeframe.length === 0
-        ) {
+        if (!analyticsData || !analyticsData.salesByTimeframe || analyticsData.salesByTimeframe.length === 0) {
             toast.error("No sales data to export");
             return;
         }
@@ -241,7 +225,7 @@ export function SalesAnalytics() {
             toast.error("No data to export");
             return;
         }
-
+        
         const exportData = [
             {
                 reportType: "Sales Summary",
@@ -251,24 +235,24 @@ export function SalesAnalytics() {
                 averageOrderSize: analyticsData.averageOrderSize,
                 revenueTrend: analyticsData.revenueTrend || 0,
                 orderTrend: analyticsData.orderTrend || 0,
-                exportDate: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
+                exportDate: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
             },
-            ...analyticsData.salesByTimeframe.map((item) => ({
+            ...analyticsData.salesByTimeframe.map(item => ({
                 period: item.label,
                 revenue: item.value,
                 reportType: "Sales By Period",
             })),
-            ...analyticsData.paymentDistribution.map((item) => ({
+            ...analyticsData.paymentDistribution.map(item => ({
                 paymentMode: item.mode,
                 count: item.count,
                 reportType: "Payment Distribution",
             })),
-            ...analyticsData.productDistribution.map((item) => ({
+            ...analyticsData.productDistribution.map(item => ({
                 productType: item.type,
                 percentage: item.value,
                 reportType: "Product Distribution",
             })),
-            ...analyticsData.topCustomers.map((item) => ({
+            ...analyticsData.topCustomers.map(item => ({
                 customerName: item.name,
                 orderCount: item.count,
                 totalSpent: item.total,
@@ -276,7 +260,7 @@ export function SalesAnalytics() {
                 reportType: "Top Customers",
             })),
         ];
-
+        
         exportToCSV(exportData, "sales-analytics-full");
     };
 
@@ -415,22 +399,15 @@ export function SalesAnalytics() {
                         <CardTitle className="text-sm font-medium">
                             Revenue Trend
                         </CardTitle>
-                        <TrendingUp
-                            className={`h-4 w-4 ${(analyticsData.revenueTrend ?? 0) >= 0 ? "text-green-500" : "text-red-500"}`}
-                        />
+                        <TrendingUp className={`h-4 w-4 ${(analyticsData.revenueTrend ?? 0) >= 0 ? 'text-green-500' : 'text-red-500'}`} />
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">
-                            {(analyticsData.revenueTrend ?? 0) >= 0 ? "+" : ""}
+                            {(analyticsData.revenueTrend ?? 0) >= 0 ? '+' : ''}
                             {(analyticsData.revenueTrend ?? 0).toFixed(1)}%
                         </div>
-                        <p
-                            className={`text-xs ${(analyticsData.revenueTrend ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}
-                        >
-                            {(analyticsData.revenueTrend ?? 0) >= 0
-                                ? "Increase"
-                                : "Decrease"}{" "}
-                            from previous period
+                        <p className={`text-xs ${(analyticsData.revenueTrend ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {(analyticsData.revenueTrend ?? 0) >= 0 ? 'Increase' : 'Decrease'} from previous period
                         </p>
                     </CardContent>
                 </Card>
@@ -460,18 +437,14 @@ export function SalesAnalytics() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">
-                            {analyticsData.totalOrders ??
-                                analyticsData.paymentDistribution.reduce(
-                                    (acc, item) => acc + item.count,
-                                    0,
-                                )}
+                            {analyticsData.totalOrders ?? analyticsData.paymentDistribution.reduce(
+                                (acc, item) => acc + item.count,
+                                0,
+                            )}
                         </div>
-                        <p
-                            className={`text-xs ${(analyticsData.orderTrend ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}
-                        >
-                            {(analyticsData.orderTrend ?? 0) >= 0 ? "+" : ""}
-                            {(analyticsData.orderTrend ?? 0).toFixed(1)}% from
-                            previous period
+                        <p className={`text-xs ${(analyticsData.orderTrend ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {(analyticsData.orderTrend ?? 0) >= 0 ? '+' : ''}
+                            {(analyticsData.orderTrend ?? 0).toFixed(1)}% from previous period
                         </p>
                     </CardContent>
                 </Card>
@@ -575,8 +548,7 @@ export function SalesAnalytics() {
                         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                             {/* Payment Methods */}
                             <div className="h-[200px]">
-                                {analyticsData.paymentDistribution.length >
-                                0 ? (
+                                {analyticsData.paymentDistribution.length > 0 ? (
                                     <ResponsiveContainer
                                         width="100%"
                                         height="100%"
@@ -646,8 +618,7 @@ export function SalesAnalytics() {
                             {/* Payment Status */}
                             <div className="h-[200px]">
                                 {analyticsData.paymentStatusDistribution &&
-                                analyticsData.paymentStatusDistribution.length >
-                                    0 ? (
+                                analyticsData.paymentStatusDistribution.length > 0 ? (
                                     <ResponsiveContainer
                                         width="100%"
                                         height="100%"
@@ -715,105 +686,63 @@ export function SalesAnalytics() {
             </div>
 
             {/* Product Distribution */}
-            {analyticsData.productDistribution &&
-                analyticsData.productDistribution.length > 0 && (
-                    <Card className="border shadow transition-shadow hover:shadow-md">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-base">
-                                Product Type Distribution
-                            </CardTitle>
-                            <CardDescription className="text-xs">
-                                Sales breakdown by product type (Thread vs
-                                Fabric)
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="h-[200px] pt-4">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart
-                                        data={analyticsData.productDistribution}
-                                        margin={{
-                                            top: 5,
-                                            right: 30,
-                                            left: 30,
-                                            bottom: 5,
-                                        }}
-                                        layout="vertical"
-                                    >
-                                        <CartesianGrid
-                                            strokeDasharray="3 3"
-                                            className="stroke-muted"
-                                        />
-                                        <XAxis
-                                            type="number"
-                                            tickFormatter={(value) =>
-                                                `${value}%`
-                                            }
-                                            domain={[0, 100]}
-                                        />
-                                        <YAxis
-                                            dataKey="type"
-                                            type="category"
-                                            tick={{ fontSize: 12 }}
-                                            tickLine={{ stroke: "transparent" }}
-                                        />
-                                        <Tooltip
-                                            formatter={(value) => [
-                                                `${value}%`,
-                                                "Percentage",
-                                            ]}
-                                        />
-                                        <Bar
-                                            dataKey="value"
-                                            name="Sales Percentage"
-                                            radius={[0, 4, 4, 0]}
-                                        >
-                                            {analyticsData.productDistribution.map(
-                                                (entry, index) => (
-                                                    <Cell
-                                                        key={`cell-${index}`}
-                                                        fill={
-                                                            entry.type ===
-                                                            ProductType.THREAD
-                                                                ? COLORS.info
-                                                                : COLORS.secondary
-                                                        }
-                                                    />
-                                                ),
-                                            )}
-                                        </Bar>
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
-
-                            {/* Legend */}
-                            <div className="mt-4 flex items-center justify-center gap-6">
-                                {analyticsData.productDistribution.map(
-                                    (entry, index) => (
-                                        <div
-                                            key={index}
-                                            className="flex items-center"
-                                        >
-                                            <div
-                                                className="mr-2 h-3 w-3 rounded-full"
-                                                style={{
-                                                    backgroundColor:
-                                                        entry.type ===
-                                                        ProductType.THREAD
-                                                            ? COLORS.info
-                                                            : COLORS.secondary,
-                                                }}
+            {analyticsData.productDistribution && 
+             analyticsData.productDistribution.length > 0 && (
+                <Card className="border shadow transition-shadow hover:shadow-md">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base">
+                            Product Type Distribution
+                        </CardTitle>
+                        <CardDescription className="text-xs">
+                            Sales breakdown by product type (Thread vs Fabric)
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="h-[200px] pt-4">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart
+                                    data={analyticsData.productDistribution}
+                                    margin={{ top: 5, right: 30, left: 30, bottom: 5 }}
+                                    layout="vertical"
+                                >
+                                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                                    <XAxis type="number" tickFormatter={(value) => `${value}%`} domain={[0, 100]} />
+                                    <YAxis
+                                        dataKey="type"
+                                        type="category"
+                                        tick={{ fontSize: 12 }}
+                                        tickLine={{ stroke: 'transparent' }}
+                                    />
+                                    <Tooltip formatter={(value) => [`${value}%`, 'Percentage']} />
+                                    <Bar dataKey="value" name="Sales Percentage" radius={[0, 4, 4, 0]}>
+                                        {analyticsData.productDistribution.map((entry, index) => (
+                                            <Cell
+                                                key={`cell-${index}`}
+                                                fill={entry.type === ProductType.THREAD ? COLORS.info : COLORS.secondary}
                                             />
-                                            <span className="text-sm">
-                                                {entry.type}: {entry.value}%
-                                            </span>
-                                        </div>
-                                    ),
-                                )}
-                            </div>
-                        </CardContent>
-                    </Card>
-                )}
+                                        ))}
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                        
+                        {/* Legend */}
+                        <div className="mt-4 flex items-center justify-center gap-6">
+                            {analyticsData.productDistribution.map((entry, index) => (
+                                <div key={index} className="flex items-center">
+                                    <div 
+                                        className="mr-2 h-3 w-3 rounded-full" 
+                                        style={{ 
+                                            backgroundColor: entry.type === ProductType.THREAD ? COLORS.info : COLORS.secondary
+                                        }} 
+                                    />
+                                    <span className="text-sm">{entry.type}: {entry.value}%</span>
+                                </div>
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
+             )}
 
             {/* Top Customers */}
             {analyticsData.topCustomers &&
@@ -829,12 +758,12 @@ export function SalesAnalytics() {
                         </CardHeader>
                         <CardContent>
                             <div className="h-[250px]">
-                                <ResponsiveContainer width="100%" height="100%">
+                                <ResponsiveContainer
+                                    width="100%"
+                                    height="100%"
+                                >
                                     <BarChart
-                                        data={analyticsData.topCustomers.slice(
-                                            0,
-                                            5,
-                                        )} // Show top 5
+                                        data={analyticsData.topCustomers.slice(0, 5)} // Show top 5
                                         layout="vertical"
                                         margin={{
                                             top: 5,
@@ -870,7 +799,9 @@ export function SalesAnalytics() {
                                         />
                                         <Tooltip
                                             formatter={(value) => [
-                                                formatCurrency(Number(value)),
+                                                formatCurrency(
+                                                    Number(value),
+                                                ),
                                                 "Total Spent",
                                             ]}
                                             labelFormatter={(label) =>

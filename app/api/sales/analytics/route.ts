@@ -126,8 +126,7 @@ export async function GET(request: NextRequest) {
         // Calculate revenue trend percentage
         let revenueTrend = 0;
         if (prevPeriodRevenue > 0) {
-            revenueTrend =
-                ((totalRevenue - prevPeriodRevenue) / prevPeriodRevenue) * 100;
+            revenueTrend = ((totalRevenue - prevPeriodRevenue) / prevPeriodRevenue) * 100;
         }
 
         // Calculate order count trend
@@ -135,10 +134,7 @@ export async function GET(request: NextRequest) {
         const prevPeriodTotalOrders = prevPeriodSalesOrders.length;
         let orderTrend = 0;
         if (prevPeriodTotalOrders > 0) {
-            orderTrend =
-                ((totalOrders - prevPeriodTotalOrders) /
-                    prevPeriodTotalOrders) *
-                100;
+            orderTrend = ((totalOrders - prevPeriodTotalOrders) / prevPeriodTotalOrders) * 100;
         }
 
         // Calculate average order size

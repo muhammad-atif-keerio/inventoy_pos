@@ -215,8 +215,18 @@ export default function LedgerEntryPage() {
 
             if (!response.ok) {
                 if (response.status === 404) {
-                    toast.error("Ledger entry not found");
-                    router.push("/ledger");
+                    const errorData = await response.json();
+                    const errorMessage = errorData.error || "Ledger entry not found";
+                    
+                    toast.error(errorMessage, {
+                        description: "The requested ledger entry could not be found or has been deleted.",
+                        duration: 5000,
+                    });
+                    
+                    // Wait a moment before redirecting to allow the user to read the toast
+                    setTimeout(() => {
+                        router.push("/ledger");
+                    }, 1500);
                     return;
                 }
                 throw new Error("Failed to fetch ledger entry");
@@ -224,6 +234,15 @@ export default function LedgerEntryPage() {
 
             const data = await response.json();
             const entryData = data.entry;
+
+            // Check if this is a mock entry from our API fallback
+            const isMockEntry = entryData.isMockEntry === true;
+            if (isMockEntry && process.env.NODE_ENV !== "production") {
+                toast.warning("Using mock data", {
+                    description: "The actual ledger entry was not found, showing fallback data for development.",
+                    duration: 5000,
+                });
+            }
 
             // For debugging data inconsistencies
             console.log("Loaded entry data:", {
@@ -233,6 +252,7 @@ export default function LedgerEntryPage() {
                 status: entryData.status,
                 entryType: entryData.entryType,
                 transactionType: entryData.transactionType,
+                isMockEntry: isMockEntry || false
             });
 
             // Validate and fix possible data inconsistencies
@@ -376,7 +396,9 @@ export default function LedgerEntryPage() {
                 error instanceof Error
                     ? error.message
                     : "Failed to load ledger entry details";
-            toast.error(errorMessage, {
+            
+            toast.error("Error loading entry", {
+                description: errorMessage,
                 id: "ledger-entry-fetch-error", // Prevent duplicate toasts
                 duration: 5000,
             });

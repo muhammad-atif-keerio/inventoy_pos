@@ -130,8 +130,7 @@ function ClientLedger() {
                 }
 
                 // Check if the response is using the new standardized format
-                const khatasArray =
-                    data.success && data.data ? data.data.khatas : data.khatas;
+                const khatasArray = data.success && data.data ? data.data.khatas : data.khatas;
 
                 if (khatasArray && khatasArray.length > 0) {
                     setKhatas(khatasArray);
@@ -211,13 +210,10 @@ function ClientLedger() {
 
                         if (response.ok) {
                             const data = await response.json();
-
+                            
                             // Check if the response is using the new standardized format
                             if (data.success && data.data) {
-                                if (
-                                    data.data.entries &&
-                                    Array.isArray(data.data.entries)
-                                ) {
+                                if (data.data.entries && Array.isArray(data.data.entries)) {
                                     // Compare data with existing entries using IDs and timestamps
                                     // Only update if there are actual changes
                                     const hasChanges = checkForDataChanges(
@@ -227,83 +223,40 @@ function ClientLedger() {
 
                                     if (hasChanges) {
                                         setEntries(data.data.entries || []);
-
+                                        
                                         if (data.data.summary) {
                                             setStats({
-                                                totalBills:
-                                                    data.data.summary
-                                                        .billsTotal || 0,
+                                                totalBills: data.data.summary.billsTotal || 0,
                                                 totalPendingBills:
-                                                    (data.data.summary
-                                                        .billsTotal || 0) -
-                                                    (data.data.summary
-                                                        .paidBills || 0),
-                                                totalTransactions:
-                                                    data.data.summary
-                                                        .transactionsTotal || 0,
-                                                totalCheques:
-                                                    data.data.summary
-                                                        .chequesTotal || 0,
-                                                totalPendingCheques:
-                                                    data.data.summary
-                                                        .pendingCheques || 0,
-                                                totalInventory:
-                                                    data.data.summary
-                                                        .inventoryItems || 0,
-                                                totalReceivables:
-                                                    data.data.summary
-                                                        .totalReceivables || 0,
-                                                totalPayables:
-                                                    data.data.summary
-                                                        .totalPayables || 0,
-                                                totalBankBalance:
-                                                    data.data.summary
-                                                        .totalBankBalance || 0,
-                                                totalOverdueCount:
-                                                    data.data.summary
-                                                        .overdueBills || 0,
-                                                totalOverdueAmount:
-                                                    data.data.summary
-                                                        .overdueAmount || 0,
-                                                totalInventoryValue:
-                                                    data.data.summary
-                                                        .totalInventoryValue ||
-                                                    0,
-                                                billsTotal:
-                                                    data.data.summary
-                                                        .billsTotal || 0,
-                                                paidBills:
-                                                    data.data.summary
-                                                        .paidBills || 0,
-                                                pendingCheques:
-                                                    data.data.summary
-                                                        .pendingCheques || 0,
-                                                inventoryItems:
-                                                    data.data.summary
-                                                        .inventoryItems || 0,
-                                                bankAccounts:
-                                                    data.data.summary
-                                                        .bankAccounts || 0,
-                                                totalCashInHand:
-                                                    data.data.summary
-                                                        .totalCashInHand || 0,
-                                                totalRecentTransactions:
-                                                    data.data.summary
-                                                        .totalRecentTransactions ||
-                                                    0,
+                                                    (data.data.summary.billsTotal || 0) -
+                                                    (data.data.summary.paidBills || 0),
+                                                totalTransactions: data.data.summary.transactionsTotal || 0,
+                                                totalCheques: data.data.summary.chequesTotal || 0,
+                                                totalPendingCheques: data.data.summary.pendingCheques || 0,
+                                                totalInventory: data.data.summary.inventoryItems || 0,
+                                                totalReceivables: data.data.summary.totalReceivables || 0,
+                                                totalPayables: data.data.summary.totalPayables || 0,
+                                                totalBankBalance: data.data.summary.totalBankBalance || 0,
+                                                totalOverdueCount: data.data.summary.overdueBills || 0,
+                                                totalOverdueAmount: data.data.summary.overdueAmount || 0,
+                                                totalInventoryValue: data.data.summary.totalInventoryValue || 0,
+                                                billsTotal: data.data.summary.billsTotal || 0,
+                                                paidBills: data.data.summary.paidBills || 0,
+                                                pendingCheques: data.data.summary.pendingCheques || 0,
+                                                inventoryItems: data.data.summary.inventoryItems || 0,
+                                                bankAccounts: data.data.summary.bankAccounts || 0,
+                                                totalCashInHand: data.data.summary.totalCashInHand || 0,
+                                                totalRecentTransactions: data.data.summary.totalRecentTransactions || 0,
                                             });
                                         }
-
+                                        
                                         // Only update last refreshed timestamp if data actually changed
                                         setLastRefreshed(new Date());
                                     }
                                 }
                             } else {
                                 // Handle legacy response format
-                                if (
-                                    data.entries &&
-                                    Array.isArray(data.entries)
-                                ) {
+                                if (data.entries && Array.isArray(data.entries)) {
                                     const hasChanges = checkForDataChanges(
                                         entries,
                                         data.entries,
@@ -313,69 +266,30 @@ function ClientLedger() {
                                         setEntries(data.entries || []);
                                         if (data.summary) {
                                             setStats({
-                                                totalBills:
-                                                    data.summary.billsTotal ||
-                                                    0,
+                                                totalBills: data.summary.billsTotal || 0,
                                                 totalPendingBills:
-                                                    (data.summary.billsTotal ||
-                                                        0) -
-                                                    (data.summary.paidBills ||
-                                                        0),
-                                                totalTransactions:
-                                                    data.summary
-                                                        .transactionsTotal || 0,
-                                                totalCheques:
-                                                    data.summary.chequesTotal ||
-                                                    0,
-                                                totalPendingCheques:
-                                                    data.summary
-                                                        .pendingCheques || 0,
-                                                totalInventory:
-                                                    data.summary
-                                                        .inventoryItems || 0,
-                                                totalReceivables:
-                                                    data.summary
-                                                        .totalReceivables || 0,
-                                                totalPayables:
-                                                    data.summary
-                                                        .totalPayables || 0,
-                                                totalBankBalance:
-                                                    data.summary
-                                                        .totalBankBalance || 0,
-                                                totalOverdueCount:
-                                                    data.summary.overdueBills ||
-                                                    0,
-                                                totalOverdueAmount:
-                                                    data.summary
-                                                        .overdueAmount || 0,
-                                                totalInventoryValue:
-                                                    data.summary
-                                                        .totalInventoryValue ||
-                                                    0,
-                                                billsTotal:
-                                                    data.summary.billsTotal ||
-                                                    0,
-                                                paidBills:
-                                                    data.summary.paidBills || 0,
-                                                pendingCheques:
-                                                    data.summary
-                                                        .pendingCheques || 0,
-                                                inventoryItems:
-                                                    data.summary
-                                                        .inventoryItems || 0,
-                                                bankAccounts:
-                                                    data.summary.bankAccounts ||
-                                                    0,
-                                                totalCashInHand:
-                                                    data.summary
-                                                        .totalCashInHand || 0,
-                                                totalRecentTransactions:
-                                                    data.summary
-                                                        .totalRecentTransactions ||
-                                                    0,
+                                                    (data.summary.billsTotal || 0) -
+                                                    (data.summary.paidBills || 0),
+                                                totalTransactions: data.summary.transactionsTotal || 0,
+                                                totalCheques: data.summary.chequesTotal || 0,
+                                                totalPendingCheques: data.summary.pendingCheques || 0,
+                                                totalInventory: data.summary.inventoryItems || 0,
+                                                totalReceivables: data.summary.totalReceivables || 0,
+                                                totalPayables: data.summary.totalPayables || 0,
+                                                totalBankBalance: data.summary.totalBankBalance || 0,
+                                                totalOverdueCount: data.summary.overdueBills || 0,
+                                                totalOverdueAmount: data.summary.overdueAmount || 0,
+                                                totalInventoryValue: data.summary.totalInventoryValue || 0,
+                                                billsTotal: data.summary.billsTotal || 0,
+                                                paidBills: data.summary.paidBills || 0,
+                                                pendingCheques: data.summary.pendingCheques || 0,
+                                                inventoryItems: data.summary.inventoryItems || 0,
+                                                bankAccounts: data.summary.bankAccounts || 0,
+                                                totalCashInHand: data.summary.totalCashInHand || 0,
+                                                totalRecentTransactions: data.summary.totalRecentTransactions || 0,
                                             });
                                         }
-
+                                        
                                         // Only update last refreshed timestamp if data actually changed
                                         setLastRefreshed(new Date());
                                     }
@@ -588,38 +502,28 @@ function ClientLedger() {
                         totalPendingBills:
                             (data.data.summary.billsTotal || 0) -
                             (data.data.summary.paidBills || 0),
-                        totalTransactions:
-                            data.data.summary.transactionsTotal || 0,
+                        totalTransactions: data.data.summary.transactionsTotal || 0,
                         totalCheques: data.data.summary.chequesTotal || 0,
-                        totalPendingCheques:
-                            data.data.summary.pendingCheques || 0,
+                        totalPendingCheques: data.data.summary.pendingCheques || 0,
                         totalInventory: data.data.summary.inventoryItems || 0,
-                        totalReceivables:
-                            data.data.summary.totalReceivables || 0,
+                        totalReceivables: data.data.summary.totalReceivables || 0,
                         totalPayables: data.data.summary.totalPayables || 0,
-                        totalBankBalance:
-                            data.data.summary.totalBankBalance || 0,
+                        totalBankBalance: data.data.summary.totalBankBalance || 0,
                         totalOverdueCount: data.data.summary.overdueBills || 0,
-                        totalOverdueAmount:
-                            data.data.summary.overdueAmount || 0,
-                        totalInventoryValue:
-                            data.data.summary.totalInventoryValue || 0,
+                        totalOverdueAmount: data.data.summary.overdueAmount || 0,
+                        totalInventoryValue: data.data.summary.totalInventoryValue || 0,
                         billsTotal: data.data.summary.billsTotal || 0,
                         paidBills: data.data.summary.paidBills || 0,
                         pendingCheques: data.data.summary.pendingCheques || 0,
                         inventoryItems: data.data.summary.inventoryItems || 0,
                         bankAccounts: data.data.summary.bankAccounts || 0,
                         totalCashInHand: data.data.summary.totalCashInHand || 0,
-                        totalRecentTransactions:
-                            data.data.summary.totalRecentTransactions || 0,
+                        totalRecentTransactions: data.data.summary.totalRecentTransactions || 0,
                     });
                 }
             } else {
                 // Handle error case with a friendly message
-                console.error(
-                    "API returned error:",
-                    data.error || "Unknown error",
-                );
+                console.error("API returned error:", data.error || "Unknown error");
                 setError(data.message || "Failed to fetch ledger data");
             }
         } catch (error) {
@@ -1099,17 +1003,13 @@ function ClientLedger() {
                         </h3>
                         <div className="flex items-center gap-2">
                             <Button asChild variant="outline" size="sm">
-                                <Link
-                                    href={`/ledger/new?type=bill&khataId=${khataId}`}
-                                >
+                                <Link href={`/ledger/new?type=bill&khataId=${khataId}`}>
                                     <FileText className="mr-1 h-4 w-4" />
                                     <span>New Bill</span>
                                 </Link>
                             </Button>
                             <Button asChild variant="outline" size="sm">
-                                <Link
-                                    href={`/ledger/new?type=cheque&khataId=${khataId}`}
-                                >
+                                <Link href={`/ledger/new?type=cheque&khataId=${khataId}`}>
                                     <Receipt className="mr-1 h-4 w-4" />
                                     <span>New Cheque</span>
                                 </Link>
@@ -1129,9 +1029,7 @@ function ClientLedger() {
                             Bills & Invoices
                         </h3>
                         <Button asChild>
-                            <Link
-                                href={`/ledger/new?type=bill&khataId=${khataId}`}
-                            >
+                            <Link href={`/ledger/new?type=bill&khataId=${khataId}`}>
                                 <FileText className="mr-2 h-4 w-4" />
                                 <span>New Bill</span>
                             </Link>
@@ -1150,9 +1048,7 @@ function ClientLedger() {
                             Recent Financial Activities
                         </h3>
                         <Button asChild>
-                            <Link
-                                href={`/ledger/new?type=transaction&khataId=${khataId}`}
-                            >
+                            <Link href={`/ledger/new?type=transaction&khataId=${khataId}`}>
                                 <ArrowDownUp className="mr-2 h-4 w-4" />
                                 <span>New Transaction</span>
                             </Link>
@@ -1173,9 +1069,7 @@ function ClientLedger() {
                             Cheques Pending to Clear
                         </h3>
                         <Button asChild>
-                            <Link
-                                href={`/ledger/new?type=cheque&khataId=${khataId}`}
-                            >
+                            <Link href={`/ledger/new?type=cheque&khataId=${khataId}`}>
                                 <Receipt className="mr-2 h-4 w-4" />
                                 <span>New Cheque</span>
                             </Link>
@@ -1192,9 +1086,7 @@ function ClientLedger() {
                     <div className="mb-4 flex items-center justify-between">
                         <h3 className="text-lg font-medium">Inventory Items</h3>
                         <Button asChild>
-                            <Link
-                                href={`/ledger/new?type=inventory&khataId=${khataId}`}
-                            >
+                            <Link href={`/ledger/new?type=inventory&khataId=${khataId}`}>
                                 <Package className="mr-2 h-4 w-4" />
                                 <span>New Inventory</span>
                             </Link>
@@ -1213,9 +1105,7 @@ function ClientLedger() {
                     <div className="mb-4 flex items-center justify-between">
                         <h3 className="text-lg font-medium">Bank Accounts</h3>
                         <Button asChild>
-                            <Link
-                                href={`/ledger/new?type=bank&khataId=${khataId}`}
-                            >
+                            <Link href={`/ledger/new?type=bank&khataId=${khataId}`}>
                                 <Building className="mr-2 h-4 w-4" />
                                 <span>New Bank Account</span>
                             </Link>

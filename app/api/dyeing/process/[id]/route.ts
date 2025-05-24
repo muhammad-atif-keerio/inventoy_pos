@@ -270,8 +270,7 @@ export async function PATCH(
                     let threadType = await db.threadType.findFirst({
                         where: {
                             name: {
-                                equals: updatedProcess.threadPurchase
-                                    .threadType,
+                                equals: updatedProcess.threadPurchase.threadType,
                                 mode: "insensitive",
                             },
                         },
@@ -280,9 +279,7 @@ export async function PATCH(
                         threadType = await db.threadType.create({
                             data: {
                                 name: updatedProcess.threadPurchase.threadType,
-                                units:
-                                    updatedProcess.threadPurchase
-                                        .unitOfMeasure || "kg",
+                                units: updatedProcess.threadPurchase.unitOfMeasure || "kg",
                                 description: `Thread type from dyeing process #${updatedProcess.id}`,
                                 updatedAt: new Date(),
                             },
@@ -312,9 +309,7 @@ export async function PATCH(
                         productType: ProductType.THREAD,
                         threadTypeId,
                         currentQuantity: quantity,
-                        unitOfMeasure:
-                            updatedProcess.threadPurchase?.unitOfMeasure ||
-                            "kg",
+                        unitOfMeasure: updatedProcess.threadPurchase?.unitOfMeasure || "kg",
                         minStockLevel: Math.ceil(quantity * 0.1),
                         costPerUnit: unitCost,
                         salePrice: unitCost * (1 + markup),

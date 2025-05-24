@@ -47,6 +47,7 @@ interface SalesSubmissionData {
     tax: number;
     totalSale: number;
     items: SalesOrderItemData[];
+    idempotencyKey?: string;
 }
 
 // Outside the try-catch block, create a function for formatting error messages
@@ -97,10 +98,19 @@ function formatErrorResponse(
 }
 
 export async function POST(req: NextRequest) {
-    // Create a unique transaction ID for tracking this request
-    const transactionId = `sales-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-
     try {
+        // Comment out auth check for now
+        // const session = await auth();
+        // if (!session) {
+        //     return NextResponse.json(
+        //         { error: "Unauthorized" },
+        //         { status: 401 }
+        //     );
+        // }
+
+        // Create a unique transaction ID for tracking this request
+        const transactionId = `sales-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
         console.log(`[${transactionId}] Starting sales order submission...`);
 
         // Validate request content type
@@ -122,6 +132,42 @@ export async function POST(req: NextRequest) {
             `[${transactionId}] Received sales data:`,
             JSON.stringify(data, null, 2),
         );
+
+        // Check for idempotency key to prevent duplicate submissions
+        const idempotencyKey = data.idempotencyKey;
+        
+        if (idempotencyKey) {
+            // Check if we've already processed this request - using simpler contains query
+            try {
+                const existingSubmission = await prisma.salesOrder.findFirst({
+                    where: {
+                        // Use a simple approach to search in JSON
+                        orderNumber: {
+                            contains: idempotencyKey
+                        }
+                    },
+                    include: {
+                        customer: true,
+                        payments: true
+                    }
+                });
+
+                // If this request was already processed, return the existing data
+                if (existingSubmission) {
+                    console.log(`Duplicate submission detected with key ${idempotencyKey}. Returning existing order.`);
+                    
+                    return NextResponse.json({
+                        success: true,
+                        message: 'Order already processed',
+                        salesOrder: existingSubmission,
+                        isRetry: true
+                    }, { status: 200 });
+                }
+            } catch (error) {
+                console.error("Error checking idempotency key:", error);
+                // Continue with the request even if idempotency check fails
+            }
+        }
 
         // Validate required fields
         if (!data.customerName) {
@@ -410,7 +456,19 @@ export async function POST(req: NextRequest) {
                                 ? new Date(data.deliveryDate)
                                 : null,
                             deliveryAddress: data.deliveryAddress || null,
-                            remarks: data.remarks || null,
+                            remarks: data.remarks 
+                                ? data.remarks + '\n\n' + JSON.stringify({
+                                    submittedAt: new Date().toISOString(),
+                                    idempotencyKey: idempotencyKey || null,
+                                    ipAddress: req.headers.get('x-forwarded-for') || 'unknown',
+                                    userAgent: req.headers.get('user-agent') || 'unknown'
+                                })
+                                : JSON.stringify({
+                                    submittedAt: new Date().toISOString(),
+                                    idempotencyKey: idempotencyKey || null,
+                                    ipAddress: req.headers.get('x-forwarded-for') || 'unknown',
+                                    userAgent: req.headers.get('user-agent') || 'unknown'
+                                }),
                             paymentMode: data.paymentMode || null,
                             paymentStatus: data.paymentStatus,
                             discount: data.discount || 0,
@@ -435,8 +493,7 @@ export async function POST(req: NextRequest) {
                         try {
                             if (item.productType === ProductType.THREAD) {
                                 // Double-check that the thread purchase exists
-                                const threadPurchaseId =
-                                    item.threadPurchaseId || item.productId;
+                                const threadPurchaseId = item.threadPurchaseId || item.productId;
                                 const threadPurchase =
                                     await tx.threadPurchase.findUnique({
                                         where: {
@@ -477,8 +534,7 @@ export async function POST(req: NextRequest) {
                                             id: orderItem.id,
                                             productType: orderItem.productType,
                                             // Use optional chaining to avoid TypeScript error
-                                            threadPurchaseId: (orderItem as any)
-                                                .threadPurchaseId,
+                                            threadPurchaseId: (orderItem as any).threadPurchaseId,
                                         },
                                     )}`,
                                 );
@@ -488,8 +544,7 @@ export async function POST(req: NextRequest) {
                                 item.productType === ProductType.FABRIC
                             ) {
                                 // Double-check that the fabric production exists
-                                const fabricProductionId =
-                                    item.fabricProductionId || item.productId;
+                                const fabricProductionId = item.fabricProductionId || item.productId;
                                 const fabricProduction =
                                     await tx.fabricProduction.findUnique({
                                         where: {
@@ -516,8 +571,7 @@ export async function POST(req: NextRequest) {
                                             productType: ProductType.FABRIC,
                                             productId: item.productId,
                                             threadPurchaseId: null, // Set explicitly to null
-                                            fabricProductionId:
-                                                fabricProductionId,
+                                            fabricProductionId: fabricProductionId,
                                             inventoryItemId:
                                                 item.inventoryItemId,
                                             updatedAt: new Date(),
@@ -530,9 +584,7 @@ export async function POST(req: NextRequest) {
                                             id: orderItem.id,
                                             productType: orderItem.productType,
                                             // Use optional chaining to avoid TypeScript error
-                                            fabricProductionId: (
-                                                orderItem as any
-                                            ).fabricProductionId,
+                                            fabricProductionId: (orderItem as any).fabricProductionId,
                                         },
                                     )}`,
                                 );
@@ -877,27 +929,58 @@ export async function POST(req: NextRequest) {
                                     };
 
                                     // Create transaction object with correct field based on product type
-                                    if (
-                                        item.productType === ProductType.THREAD
-                                    ) {
-                                        await tx.inventoryTransaction.create({
-                                            data: {
-                                                ...transactionData,
-                                                threadPurchaseId:
-                                                    item.productId,
-                                            },
+                                    if (item.productType === ProductType.THREAD) {
+                                        // For thread items, ensure we have a valid thread purchase ID
+                                        const validThreadPurchaseId = item.threadPurchaseId || item.productId;
+                                        
+                                        // Verify this thread purchase actually exists to avoid foreign key errors
+                                        const threadPurchase = await tx.threadPurchase.findUnique({
+                                            where: { id: validThreadPurchaseId },
+                                            select: { id: true }
                                         });
-                                    } else if (
-                                        item.productType === ProductType.FABRIC
-                                    ) {
-                                        await tx.inventoryTransaction.create({
-                                            data: {
-                                                ...transactionData,
-                                                fabricProductionId:
-                                                    item.productId,
-                                            },
+                                        
+                                        if (!threadPurchase) {
+                                            console.warn(`Thread purchase ${validThreadPurchaseId} not found, skipping FK relation`);
+                                            // Create without the thread purchase relation if it doesn't exist
+                                            await tx.inventoryTransaction.create({
+                                                data: transactionData
+                                            });
+                                        } else {
+                                            // Create with thread purchase relation if it exists
+                                            await tx.inventoryTransaction.create({
+                                                data: {
+                                                    ...transactionData,
+                                                    threadPurchaseId: threadPurchase.id
+                                                },
+                                            });
+                                        }
+                                    } else if (item.productType === ProductType.FABRIC) {
+                                        // For fabric items, ensure we have a valid fabric production ID
+                                        const validFabricProductionId = item.fabricProductionId || item.productId;
+                                        
+                                        // Verify this fabric production actually exists to avoid foreign key errors
+                                        const fabricProduction = await tx.fabricProduction.findUnique({
+                                            where: { id: validFabricProductionId },
+                                            select: { id: true }
                                         });
+                                        
+                                        if (!fabricProduction) {
+                                            console.warn(`Fabric production ${validFabricProductionId} not found, skipping FK relation`);
+                                            // Create without the fabric production relation if it doesn't exist
+                                            await tx.inventoryTransaction.create({
+                                                data: transactionData
+                                            });
+                                        } else {
+                                            // Create with fabric production relation if it exists
+                                            await tx.inventoryTransaction.create({
+                                                data: {
+                                                    ...transactionData,
+                                                    fabricProductionId: fabricProduction.id
+                                                },
+                                            });
+                                        }
                                     } else {
+                                        // For other product types or if relationships cannot be established
                                         await tx.inventoryTransaction.create({
                                             data: transactionData,
                                         });
@@ -1005,68 +1088,85 @@ export async function POST(req: NextRequest) {
 
                         if (!fullOrder) {
                             console.warn(
-                                `Could not find the newly created order ${salesOrder.id} for detailed response`,
+                                `Could not get full order details for order ${orderNumber}`
                             );
                         }
-                    } catch (loadError) {
+                    } catch (error) {
                         console.error(
-                            `Error loading full order details for response:`,
-                            loadError,
+                            `Error fetching full order details for order ${orderNumber}:`,
+                            error,
                         );
-                        // Don't throw here, we'll fall back to basic order details
+                        // We don't throw the error here to allow the order to be created even if fetching details fails
+                        // Instead, we log it and continue
                     }
 
-                    // After successful transaction
-                    const endTime = Date.now();
-                    const duration = endTime - startTime;
-                    console.log(
-                        `[${transactionId}] Transaction completed in ${duration}ms`,
-                    );
-
-                    // Add memory usage logging
-                    const used = process.memoryUsage();
-                    console.log(`[${transactionId}] Memory usage:`, {
-                        rss: `${Math.round(used.rss / 1024 / 1024)}MB`,
-                        heapTotal: `${Math.round(used.heapTotal / 1024 / 1024)}MB`,
-                        heapUsed: `${Math.round(used.heapUsed / 1024 / 1024)}MB`,
-                    });
-
-                    // Format the response with detailed information and metadata
                     return {
-                        success: true,
-                        message: "Sales order created successfully",
-                        salesOrder: fullOrder || salesOrder, // Use the full order if available
-                        orderNumber: orderNumber,
-                        items: createdItems,
-                        payment: payment,
-                        paymentError: paymentError, // Include any payment errors in the response
-                        meta: {
-                            timestamp: new Date().toISOString(),
-                            totalItems: createdItems.length,
-                            paymentProcessed: payment !== null,
-                            performance: {
-                                duration: `${duration}ms`,
-                                memoryUsage: {
-                                    rss: `${Math.round(used.rss / 1024 / 1024)}MB`,
-                                    heapTotal: `${Math.round(used.heapTotal / 1024 / 1024)}MB`,
-                                    heapUsed: `${Math.round(used.heapUsed / 1024 / 1024)}MB`,
-                                },
-                            },
-                        },
+                        salesOrder: fullOrder || salesOrder,
+                        paymentError,
                     };
-                },
-                {
-                    maxWait: 10000, // 10s maximum to wait for transaction
-                    timeout: 30000, // 30s maximum transaction duration
                 },
             );
 
-            // Return the NextResponse with the transaction result
-            return NextResponse.json(result);
-        } catch (error: unknown) {
+            console.log(
+                `[${transactionId}] Transaction completed in ${
+                    Date.now() - startTime
+                }ms`,
+            );
+
+            return NextResponse.json(
+                {
+                    message: "Sales order created successfully",
+                    salesOrder: result.salesOrder,
+                    paymentError: result.paymentError,
+                },
+                { status: 201 },
+            );
+        } catch (error) {
+            console.error(`[${transactionId}] Error creating sales order:`, error);
             return formatErrorResponse(error, transactionId);
         }
-    } catch (error: unknown) {
-        return formatErrorResponse(error, transactionId);
+    } catch (error) {
+        console.error("Error processing sales order submission:", error);
+        return formatErrorResponse(error);
+    }
+}
+
+// Add endpoint to check if order number exists
+export async function GET(request: Request) {
+    try {
+        // Get the order number from the URL
+        const { searchParams } = new URL(request.url);
+        const orderNumber = searchParams.get('orderNumber');
+
+        if (!orderNumber) {
+            return NextResponse.json(
+                { error: 'Order number parameter is required' },
+                { status: 400 }
+            );
+        }
+
+        // Check if order number exists
+        const existingOrder = await prisma.salesOrder.findFirst({
+            where: {
+                orderNumber: orderNumber.trim(),
+            },
+            select: {
+                id: true,
+                orderNumber: true,
+                orderDate: true
+            }
+        });
+
+        return NextResponse.json({
+            exists: !!existingOrder,
+            order: existingOrder
+        }, { status: 200 });
+        
+    } catch (error) {
+        console.error("Error checking order number:", error);
+        return NextResponse.json(
+            { error: "Failed to check order number" },
+            { status: 500 }
+        );
     }
 }

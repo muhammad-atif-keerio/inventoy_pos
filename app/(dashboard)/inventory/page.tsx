@@ -75,8 +75,6 @@ import {
 
 // app/inventory/page.tsx
 
-// app/inventory/page.tsx
-
 // Simple Progress component implementation
 const Progress: React.FC<{ value?: number; className?: string }> = ({
     value = 0,
