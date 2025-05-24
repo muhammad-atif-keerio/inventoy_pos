@@ -1123,6 +1123,7 @@ export async function POST(req: NextRequest) {
 
             return NextResponse.json(
                 {
+                    success: true,
                     message: "Sales order created successfully",
                     salesOrder: result.salesOrder,
                     paymentError: result.paymentError,

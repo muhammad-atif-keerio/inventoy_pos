@@ -1517,8 +1517,30 @@ export function SalesFormDialog({
                 clearTimeout(timeoutId);
 
                 if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.details || errorData.error || "Failed to create sale");
+                    let errorMessage = `Failed to create sale (status ${response.status})`;
+                    let errorDetails = null;
+                    try {
+                        const errorData = await response.clone().json();
+                        errorMessage = errorData.details || errorData.error || errorMessage;
+                        errorDetails = errorData;
+                    } catch (jsonErr) {
+                        try {
+                            const errorText = await response.clone().text();
+                            if (errorText && !errorText.startsWith('<!DOCTYPE')) errorMessage = errorText;
+                        } catch (textErr) {
+                            // ignore
+                        }
+                    }
+                    // Log everything for debugging
+                    console.error('API error response:', { errorMessage, errorDetails, status: response.status });
+                    // Set field error if provided
+                    if (errorDetails && errorDetails.field) {
+                        form.setError(errorDetails.field, {
+                            type: "manual",
+                            message: errorMessage
+                        });
+                    }
+                    throw new Error(errorMessage);
                 }
 
                 const responseData = await response.json();
@@ -1577,14 +1599,12 @@ export function SalesFormDialog({
             } catch (error) {
                 console.error("Error creating sale:", error);
                 let errorMessage = "Failed to create sale";
-                
                 if (error instanceof Error) {
                     errorMessage = error.message;
                 } else if (error instanceof DOMException && error.name === "AbortError") {
                     errorMessage = "Request timed out. Please try again.";
                 }
-                
-                toast.error(errorMessage);
+                toast.error(errorMessage, { duration: 8000 });
             } finally {
                 setLoading(false);
             }
