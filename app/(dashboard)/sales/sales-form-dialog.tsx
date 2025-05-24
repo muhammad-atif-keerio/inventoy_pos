@@ -1502,114 +1502,26 @@ export function SalesFormDialog({
 
             // Implement request timeout handling to prevent hanging requests
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+            const timeoutId = setTimeout(() => controller.abort(), 30000);
 
             try {
-                // Submit the data with timeout handling
                 const response = await fetch("/api/sales/submit", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
                     },
                     body: JSON.stringify(submissionData),
-                    signal: controller.signal
+                    signal: controller.signal,
                 });
 
                 clearTimeout(timeoutId);
 
                 if (!response.ok) {
-                    const responseText = await response.text();
-                    console.error(`API response error (${response.status}): ${responseText}`);
-
-                    try {
-                        // Check if the response is HTML (indicating a server error page)
-                        if (responseText.includes("<!DOCTYPE html>") || responseText.includes("<html>")) {
-                            toast.error("Server error: The server returned an HTML error page instead of JSON", {
-                                description: `Status code: ${response.status}. Please try again or contact support.`,
-                                duration: 8000
-                            });
-                            console.error("Server returned HTML instead of JSON:", responseText.substring(0, 200) + "...");
-                        } else {
-                            // Try to parse as JSON
-                            const errorData = JSON.parse(responseText);
-                            
-                            // Display a more descriptive error message
-                            const errorMessage = errorData.details || errorData.error || "Failed to create sale";
-                            
-                            toast.error(errorMessage, {
-                                description: errorData.details 
-                                    ? "Please check the form details and try again."
-                                    : `Server reported an error (${response.status}). Please try again later.`,
-                                duration: 8000
-                            });
-                            
-                            console.error("Server error data:", errorData);
-                            
-                            // Fix the error field type to avoid using 'any'
-                            if (errorData.field) {
-                                // Use type assertion with a more specific type
-                                form.setError(errorData.field as keyof FormValues, {
-                                    type: "manual",
-                                    message: errorMessage
-                                });
-                                
-                                // Scroll to the error field
-                                setTimeout(() => {
-                                    const errorField = document.querySelector(`[name="${errorData.field}"]`);
-                                    if (errorField) {
-                                        errorField.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                    }
-                                }, 100);
-                            }
-                        }
-                    } catch (parseError) {
-                        console.error("Failed to parse error response:", parseError);
-                        
-                        // Improved error message with status code and recovery options
-                        if (response.status >= 500) {
-                            toast.error(`Server error (${response.status})`, {
-                                description: "The server encountered an error. Your data was not lost - please try submitting again in a few moments.",
-                                duration: 8000
-                            });
-                        } else if (response.status === 413) {
-                            toast.error("Request too large", {
-                                description: "The sale data may be too large. Try reducing the number of items or splitting into multiple sales.",
-                                duration: 8000
-                            });
-                        } else if (response.status === 429) {
-                            toast.error("Too many requests", {
-                                description: "Please wait a moment before trying again.",
-                                duration: 8000
-                            });
-                        } else {
-                            toast.error(`Failed to create sale: ${responseText.substring(0, 200) || "Server error"}`, {
-                                description: `Status: ${response.status}. Check console for details.`,
-                                duration: 8000
-                            });
-                        }
-                    }
-
-                    setLoading(false);
-                    return;
+                    const errorData = await response.json();
+                    throw new Error(errorData.details || errorData.error || "Failed to create sale");
                 }
 
-                // Handle successful response
-                let responseData;
-                try {
-                    const responseText = await response.text();
-                    if (responseText.includes("<!DOCTYPE html>") || responseText.includes("<html>")) {
-                        toast.error("Server error: The server returned an HTML error page");
-                        console.error("Server returned HTML instead of JSON:", responseText.substring(0, 200) + "...");
-                        setLoading(false);
-                        return;
-                    }
-                    responseData = JSON.parse(responseText);
-                } catch (parseError) {
-                    toast.error("Error parsing server response");
-                    console.error("Response parse error:", parseError);
-                    setLoading(false);
-                    return;
-                }
+                const responseData = await response.json();
 
                 // Success!
                 if (responseData?.success) {
@@ -1662,28 +1574,19 @@ export function SalesFormDialog({
                 } else {
                     throw new Error(responseData?.error || "Unknown error occurred");
                 }
-            } catch (fetchError: unknown) {
-                // Handle network errors and timeouts specifically
-                console.error("Network or fetch error:", fetchError);
+            } catch (error) {
+                console.error("Error creating sale:", error);
+                let errorMessage = "Failed to create sale";
                 
-                if (fetchError instanceof Error) {
-                    if (fetchError.name === 'AbortError') {
-                        toast.error("Request timed out", {
-                            description: "The server took too long to respond. Your data is saved locally - try submitting again.",
-                            duration: 8000
-                        });
-                    } else {
-                        toast.error(`Network error: ${fetchError.message}`, {
-                            description: "Could not connect to the server. Please check your internet connection and try again.",
-                            duration: 8000
-                        });
-                    }
-                } else {
-                    toast.error("Unknown error occurred", {
-                        description: "Please try again or contact support.",
-                        duration: 8000
-                    });
+                if (error instanceof Error) {
+                    errorMessage = error.message;
+                } else if (error instanceof DOMException && error.name === "AbortError") {
+                    errorMessage = "Request timed out. Please try again.";
                 }
+                
+                toast.error(errorMessage);
+            } finally {
+                setLoading(false);
             }
         } catch (error) {
             console.error("Error creating sale:", error);
